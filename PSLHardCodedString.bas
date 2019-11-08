@@ -1,5 +1,5 @@
 '' Get and write the hard-coded strings in PE files or other binary files
-'' (c) 2010-2019 by wanfu (Last modified on 2019.06.23)
+'' (c) 2010-2019 by wanfu (Last modified on 2019.11.08)
 
 '#Uses ".\Module\modPEInfo.bas"
 '#Uses ".\Module\modMacInfo.bas"
@@ -9,14 +9,14 @@
 
 Option Explicit
 
-'Public Const Version = "2019.06.23"
-'Public Const Build = "190623"
+'Public Const Version = "2019.11.08"
+'Public Const Build = "191108"
 Private Const MacroLoc = MacroDir
 Private Const RefFrontChar = "[\x0F\x4C\x48\x8B\xF2][\x05\x10\x0F\x8B\x8D\xB7][\x00-\xFF]{3}"
 Private Const SpaceWithPointChar = "·"
 
 Private src As PslSourceList,trn As PslTransList,HideSecMoveVal As Long
-Private UIFileList() As UI_FILE,SelectedBak() As String,UpdateSetBak() As String,LFListBak() As LOG_FONT
+Private SelectedBak() As String,UpdateSetBak() As String,LFListBak() As LOG_FONT
 Private UniLangListBak() As LANG_PROPERTIE,AllLangList() As LANG_PROPERTIE
 Private StopHwnd As Long,EscHwnd As Long,StopMsg As String,StopTitle As String
 
@@ -101,7 +101,7 @@ Sub Main
 	ReDim AllStrDataList(0).Trans.Reference(0) 'As REFERENCE_PROPERTIE
 	ReDim FreeByteList(0) As FREE_BTYE_SPACE
 	ReDim UIFileList(0) As UI_FILE,UIDataList(0) As INIFILE_DATA
-	ReDim Selected(29) As String,UpdateSet(5) As String,LFList(2) As LOG_FONT
+	ReDim Selected(30) As String,UpdateSet(5) As String,LFList(2) As LOG_FONT
 	ImportSrcSet(4) = "1"
 	For i = 2 To UBound(ImportTranSet)
 		Select Case i
@@ -460,7 +460,7 @@ Private Function CheckFile(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPERTIE) 
 	'按代码页值从大到小排序，以便检测字串的语言时英语可以优先检测
 	If n > 0 Then Call SortLangArrayByCP(AllLangList,1,n,True)
 
-	Select Case GetFileFormat(orgFile.FilePath,StrToLong(Selected(0)),orgFile.FileType)
+	Select Case GetFileFormat(orgFile.FilePath,StrToLong(Selected(1)),orgFile.FileType)
 	Case "PE","NET",""
 		'检查文件类型并读取来源文件头
 		If GetPEHeaders(orgFile.FilePath,orgFile,StrToLong(Selected(1))) = True Then
@@ -1339,11 +1339,12 @@ Private Function ExtractString(orgFile As FILE_PROPERTIE,ByVal ShowMsg As Long) 
 			PSL.Output Replace$(MsgList(59),"%s",CStr(UBound(AllStrDataList) + 1))
 		End If
 	Case 0
-		If orgFile.Magic <> "" Then
-			MsgBox IIf(ExtractSet(49) = "0",MsgList(60),MsgList(61)),vbOkOnly+vbInformation,MsgList(63)
-		Else
+		Select Case orgFile.Magic
+		Case "NotPE32","NotPE64",""
 			MsgBox MsgList(62),vbOkOnly+vbInformation,MsgList(63)
-		End If
+		Case Else
+			MsgBox IIf(ExtractSet(49) = "0",MsgList(60),MsgList(61)),vbOkOnly+vbInformation,MsgList(63)
+		End Select
 		ExtractString = ExtractString(orgFile,ShowMsg)
 	End Select
 End Function
@@ -1373,20 +1374,21 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 
 		If CheckRefTypeArray(RefTypeList) = True Then
 			ReDim TempArray(UBound(RefTypeList) + 1) As String
-			TempArray(0) = MsgList(52)
-			If InStr(SourceFile.Magic,"NotPE") Then
-				For i = 0 To UBound(RefTypeList)
-					TempArray(i + 1) = RefTypeList(i).sName
-					If RefTypeList(i).Template = UseRefTypeList(0).Template Then j = i + 1
-				Next i
-			Else
-				For i = 0 To UBound(RefTypeList)
-					TempArray(i + 1) = RefTypeList(i).sName
-				Next i
+			TempArray(0) = MsgList(2)
+			For i = 0 To UBound(RefTypeList)
+				TempArray(i + 1) = RefTypeList(i).sName
+				If RefTypeList(i).Template = UseRefTypeList(0).Template Then j = i + 1
+			Next i
+			If j = 0 Then
+				If CheckRefTypeArray(UseRefTypeList) = True Then
+					j = UBound(TempArray) + 1
+					ReDim Preserve TempArray(j) As String
+					TempArray(j) = UseRefTypeList(0).sName
+				End If
 			End If
 		Else
 			ReDim TempArray(0) As String
-			TempArray(0) = MsgList(52)
+			TempArray(0) = MsgList(2)
 			DlgEnable "ReferenceTypeList",False
 		End If
 		DlgListBoxArray "ReferenceTypeList",TempArray()
@@ -1456,7 +1458,11 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End If
 		End If
 
-		DlgText "FilePathBox",SourceFile.FilePath
+		Temp = SourceFile.FilePath
+		If Len(Temp) > 70 Then
+			Temp = Left$(Temp,InStr(Temp,"\")) & "..." & Right(Temp,70 - Len(Left$(Temp,InStr(Temp,"\"))))
+		End If
+		DlgText "FilePathBox",Temp
 		DlgText "FilePathBoxBak",SourceFile.FilePath
 		DlgText "SectionListBox",StrListJoin(UseSectionList,ItemJoinStr)
 		DlgText "SectionListWithSubBox",StrListJoin(UseSubSecList,ItemJoinStr)
@@ -1632,7 +1638,7 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				If DlgText("FilePathBox") = "" Then
 					MsgBox MsgList(11),vbOkOnly+vbInformation,MsgList(10)
 					Exit Function
-				ElseIf Dir$(DlgText("FilePathBox")) = "" Then
+				ElseIf Dir$(DlgText("FilePathBoxBak")) = "" Then
 					MsgBox MsgList(12),vbOkOnly+vbInformation,MsgList(10)
 					Exit Function
 				End If
@@ -1846,35 +1852,39 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			DlgEnable "SaveButton",False
 			Exit Function
 		Case "HelpButton"
-			ReDim TempArray(4) As String
-			TempArray(0) = MsgList(0)
-			TempArray(1) = MsgList(1)
-			TempArray(2) = MsgList(23)
-			TempArray(3) = MsgList(34)
-			TempArray(4) = MsgList(2)
+			ReDim TempArray(2) As String
+			If DlgValue("ModeCheckBox") = 0 Then
+				TempArray(0) = MsgList(0)
+			Else
+				TempArray(0) = MsgList(1)
+			End If
+			TempArray(1) = MsgList(23)
+			TempArray(2) = MsgList(34)
 			Select Case ShowPopupMenu(TempArray,vbPopupUseRightButton)
 			Case 0
 				If DlgValue("ModeCheckBox") = 0 Then
+					If StrToLong(Selected(30)) = 1 Then
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1024,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					End If
 					Call Help("GetStringHelp")
 				Else
+					If StrToLong(Selected(30)) = 1 Then
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1006,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					End If
 					Call Help("GetStrSetHelp")
 				End If
 			Case 1
-				Call Help("MainHelp")
-			Case 2
 				If Dir$(MacroLoc & "\Module\modEncodeQuery.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modEncodeQuery.bas"
 				ElseIf Dir$(MacroLoc & "\modEncodeQuery.bas") <> "" Then
 					MacroRun MacroLoc & "\modEncodeQuery.bas"
 				End If
-			Case 3
+			Case 2
 				If Dir$(MacroLoc & "\Module\modReferenceSearch.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modReferenceSearch.bas", SourceFile.FilePath
 				ElseIf Dir$(MacroLoc & "\modReferenceSearch.bas") <> "" Then
 					MacroRun MacroLoc & "\modReferenceSearch.bas", SourceFile.FilePath
 				End If
-			Case 4
-				Call Help("About")
 			End Select
 			Exit Function
 		Case "ResetButton"
@@ -2341,7 +2351,12 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			'自动选择时重新获取字串保留列表的设置
 			If ExtractSet(36) = "1" Or ExtractSet(40) = "1" Then GetSettings("ReserveStrDic")
 			'显示数据
-			DlgText "FilePathBox",SourceFile.FilePath
+			Temp = SourceFile.FilePath
+			If Len(Temp) > 70 Then
+				Temp = Left$(Temp,InStr(Temp,"\")) & "..." & Right(Temp,70 - Len(Left$(Temp,InStr(Temp,"\"))))
+			End If
+			DlgText "FilePathBox",Temp
+			DlgText "FilePathBoxBak",SourceFile.FilePath
 			DlgText "LangListBox",StrListJoin(GetLangStrList(UseLangList,0),ItemJoinStr)
 			DlgText "RangeTextBox",MsgList(41)
 			'DlgText "RangeTextBoxBak",MsgList(41)
@@ -2477,6 +2492,7 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			TempArray = GetLangStrList(UseLangList,0)
 			Do
 				If EditList(TempList,TempArray) = False Then Exit Function
+				n = 0
 				For i = LBound(TempArray) To UBound(TempArray)
 					If Dic.Exists(TempArray(i)) Then
 						If AllLangList(Dic.Item(TempArray(i))).LangID = 1033 Then
@@ -2777,6 +2793,9 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -3054,14 +3073,20 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				End If
 				'重置当前对话框字串
 				If getMsgList(UIDataList,MsgList,"ExtractStringDlgFunc",1) = True Then
-					If SourceFile.Magic = "" Then
+					Select Case SourceFile.Magic
+					Case "NotPE32","NotPE64",""
 						UseSectionList(0) = MsgList(13)
+						SourceFile.SecList(0).sName = MsgList(13)
+						TargetFile.SecList(0).sName = MsgList(13)
 						DlgText "SectionListBox",MsgList(13)
-					ElseIf SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
-						DlgText "SectionListBox",Replace$(DlgText("SectionListBox"),SourceFile.SecList(SourceFile.MaxSecIndex).sName,MsgList(35))
-						SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(35)
-						UseSectionList = ReSplit(DlgText("SectionListBox"),ItemJoinStr)
-					End If
+					Case Else
+						If SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
+							DlgText "SectionListBox",Replace$(DlgText("SectionListBox"),SourceFile.SecList(SourceFile.MaxSecIndex).sName,MsgList(35))
+							SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(35)
+							TargetFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(35)
+							UseSectionList = ReSplit(DlgText("SectionListBox"),ItemJoinStr)
+						End If
+					End Select
 					If DlgText("RangeTextBox") = DlgText("RangeTextBoxBak") Then
 						DlgText "RangeTextBox",MsgList(41)
 					End If
@@ -3075,19 +3100,20 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End If
 
 			'重置自定义引用算法
-			j = DlgValue("ReferenceTypeList")
+			j = 0
 			If CheckRefTypeArray(RefTypeList) = True Then
 				ReDim TempArray(UBound(RefTypeList) + 1) As String
-				TempArray(0) = MsgList(52)
-				If InStr(SourceFile.Magic,"NotPE") Then
-					For i = 0 To UBound(RefTypeList)
-						TempArray(i + 1) = RefTypeList(i).sName
-						If RefTypeList(i).Template = UseRefTypeList(0).Template Then j = i + 1
-					Next i
-				Else
-					For i = 0 To UBound(RefTypeList)
-						TempArray(i + 1) = RefTypeList(i).sName
-					Next i
+				TempArray(0) = MsgList(2)
+				For i = 0 To UBound(RefTypeList)
+					TempArray(i + 1) = RefTypeList(i).sName
+					If RefTypeList(i).Template = UseRefTypeList(0).Template Then j = i + 1
+				Next i
+				If j = 0 Then
+					If CheckRefTypeArray(UseRefTypeList) = True Then
+						j = UBound(TempArray) + 1
+						ReDim Preserve TempArray(j) As String
+						TempArray(j) = UseRefTypeList(0).sName
+					End If
 				End If
 				Select Case SourceFile.Magic
 				Case "NotPE32","NotPE64",""
@@ -3095,7 +3121,7 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				End Select
 			Else
 				ReDim TempArray(0) As String
-				TempArray(0) = MsgList(52)
+				TempArray(0) = MsgList(2)
 				DlgEnable "ReferenceTypeList",False
 			End If
 			DlgListBoxArray "ReferenceTypeList",TempArray()
@@ -3388,50 +3414,39 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		Select Case SuppValue
 		Case 1	'帮助
 			If getMsgList(UIDataList,MsgList,"ExtractStringDlgFunc",1) = False Then Exit Function
-			ReDim TempArray(5) As String
-			TempArray(0) = MsgList(0)
-			TempArray(1) = MsgList(1)
-			TempArray(2) = MsgList(22)
-			TempArray(3) = MsgList(23)
-			TempArray(4) = MsgList(34)
-			TempArray(5) = MsgList(2)
+			ReDim TempArray(2) As String
+			If DlgValue("ModeCheckBox") = 0 Then
+				TempArray(0) = MsgList(0)
+			Else
+				TempArray(0) = MsgList(1)
+			End If
+			TempArray(1) = MsgList(23)
+			TempArray(2) = MsgList(34)
 			Select Case ShowPopupMenu(TempArray,vbPopupUseRightButton)
 			Case 0
 				If DlgValue("ModeCheckBox") = 0 Then
+					If StrToLong(Selected(30)) = 1 Then
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1024,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					End If
 					Call Help("GetStringHelp")
 				Else
+					If StrToLong(Selected(30)) = 1 Then
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1006,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					End If
 					Call Help("GetStrSetHelp")
 				End If
 			Case 1
-				Call Help("MainHelp")
-			Case 2
-				i = Download(UpdateSet,UpdateSet(1),3,-2)
-				If i = 0 Then Exit Function
-				If UpdateSet(5) < Format(Date,"yyyy-MM-dd") Then
-					Stemp = True
-				ElseIf i = 3 And ArrayComp(UpdateSet,UpdateSetBak) = False Then
-					Stemp = True
-				End If
-				If Stemp = True Then
-					UpdateSet(5) = Format(Date,"yyyy-MM-dd")
-					If WriteSettings("Update") = False Then Exit Function
-					UpdateSetBak(5) = UpdateSet(5)
-				End If
-				If i = 3 Then Call ExitMacro(1)
-			Case 3
 				If Dir$(MacroLoc & "\Module\modEncodeQuery.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modEncodeQuery.bas"
 				ElseIf Dir$(MacroLoc & "\modEncodeQuery.bas") <> "" Then
 					MacroRun MacroLoc & "\modEncodeQuery.bas"
 				End If
-			Case 4
+			Case 2
 				If Dir$(MacroLoc & "\Module\modReferenceSearch.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modReferenceSearch.bas", SourceFile.FilePath
 				ElseIf Dir$(MacroLoc & "\modReferenceSearch.bas") <> "" Then
 					MacroRun MacroLoc & "\modReferenceSearch.bas", SourceFile.FilePath
 				End If
-			Case 5
-				Call Help("About")
 			End Select
 		Case 2	'弹出正则表达式专用字符选择菜单
 			If DlgValue("OtherMatchModeList") < 2 Then Exit Function
@@ -3439,6 +3454,9 @@ Private Function ExtractStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -3596,6 +3614,9 @@ Private Function EditString(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPERTIE)
 		MsgList(0) = Replace$(Replace$(MsgList(0),"%s",Version),"%d",MsgList(40))
 	Else
 		MsgList(0) = Replace$(Replace$(MsgList(0),"%s",Version),"%d",trnFile.hcsFile.FilePath)
+		If Len(MsgList(0)) > 110 Then
+			MsgList(0) = Left$(MsgList(0),InStr(MsgList(0),"\")) & "..." & Right(MsgList(0),110 - Len(Left$(MsgList(0),InStr(MsgList(0),"\"))))
+		End If
 	End If
 	i = IIf(trnFile.hcsFile.FilePath = orgFile.hcsFile.FilePath,1,0)
 	'对话框
@@ -4069,8 +4090,18 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			TempArray(10) = MsgList(13)
 			Select Case ShowPopupMenu(TempArray,vbPopupUseRightButton)
 			Case 0
+				If StrToLong(Selected(30)) = 1 Then
+					If TargetFile.hcsFile.FilePath = SourceFile.hcsFile.FilePath Then
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1007,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					Else
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1008,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					End If
+				End If
 				Call Help("EditStringHelp")
 			Case 1
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1017,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("MainHelp")
 			Case 2
 				i = 0
@@ -4207,6 +4238,9 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				TempList = ReSplit(ReadBinaryFile(ExtractSet(35),CP_UNICODELITTLE,True),vbNullChar)
 				StrList2StrDic(FilterStrDic,TempList,StrToLong(ReSplit(FilterStrSet(17),ItemJoinStr)(1)),1)
 			Case 10
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1002,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("About")
 			End Select
 			Exit Function
@@ -4847,7 +4881,11 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 					If getMsgList(UIDataList,MsgList,"EditStringDlgFunc",1) = False Then Exit Function
 				End If
 				Stemp4 = FontComps(LFList,tmpLFList)
-				DlgText -1,Replace$(Replace$(MsgList(50),"%s",Version),"%d",TargetFile.hcsFile.FilePath)
+				MsgList(50) = Replace$(Replace$(MsgList(50),"%s",Version),"%d",TargetFile.hcsFile.FilePath)
+				If Len(MsgList(50)) > 110 Then
+					MsgList(50) = Left$(MsgList(50),InStr(MsgList(50),"\")) & "..." & Right(MsgList(50),110 - Len(Left$(MsgList(50),InStr(MsgList(50),"\"))))
+				End If
+				DlgText -1,MsgList(50)
 				'显示消息输出模式
 				If n > 0 Then DlgValue "ModeCheckBox",0
 				m = IIf(TargetFile.hcsFile.FilePath = SourceFile.hcsFile.FilePath,1,0)
@@ -4911,7 +4949,10 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				End If
 				OrgStrTypeList = UseStrTypeList: OrgStrTypeListBak = UseStrTypeList
 				StrTypeListBak = StrTypeList: RefTypeListBak = RefTypeList
-				If StringTerminator = "" Then ExtractSet(31) = "0" & ItemJoinStr & ReSplit(ExtractSet(31),ItemJoinStr,2)(1)
+				If StringTerminator = "" Then
+					ExtractSet(31) = "0" & ItemJoinStr & ReSplit(ExtractSet(31),ItemJoinStr,2)(1)
+					StringTerminator = "(\x00+)"
+				End If
 				ExtractSet(31) = AddStrEndCharSet(ExtractSet(31),ReSplit(SourceFile.FileName,"(")(0) & JoinStr & StringTerminator)
 				ExtractSetBak(31) = ExtractSet(31)
 				If CheckStrTypeArray(UseStrTypeList) = True Then
@@ -5036,12 +5077,12 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 								y = intArray(i)
 							End If
 						Next i
-						If ImportSrcSet(3) = "0" Then ReDim intArray(0) As Long
 						'设置水平滚动条的长度以查看最长列表项的全部字符串
 						i = GetStrPixels(j,UseStrDataList(y).Source.sString)
 						If i > SendMessageLNG(j, LB_GETHORIZONTALEXTENT, 0&, 0&) Then
 							SendMessageLNG(j, LB_SETHORIZONTALEXTENT, i, 0&)
 						End If
+						If ImportSrcSet(3) = "0" Then ReDim intArray(0) As Long
 						SetListBoxItems(j,intArray)
 					End If
 					DlgEnable "AllShowButton",False
@@ -5130,7 +5171,6 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 								y = intArray(i)
 							End If
 						Next i
-						If ImportSrcSet(3) = "0" Then ReDim intArray(0) As Long
 						'设置水平滚动条的长度以查看最长列表项的全部字符串
 						i = GetStrPixels(j,UseStrDataList(y).Source.sString)
 						If i > SendMessageLNG(j, LB_GETHORIZONTALEXTENT, 0&, 0&) Then
@@ -5332,25 +5372,23 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If UseRefTypeList(0).Template <> UseRefTypeList(1).Template Then
 				Select Case SourceFile.Magic
 				Case ""
-					If AllStrDataList(0).Moveable = 0 Then
-						For i = 0 To UBound(AllStrDataList)
-							AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
-							AllStrDataList(i).Source.lReferenceNum = 0
-							AllStrDataList(i).Source.GetRefState = 0
-							AllStrDataList(i).Trans.lReferenceNum = 0
-							AllStrDataList(i).Trans.GetRefState = 0
-						Next i
-					End If
+					DlgEnable "RefListButton",False
+					For i = 0 To UBound(AllStrDataList)
+						AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
+						AllStrDataList(i).Source.lReferenceNum = 0
+						AllStrDataList(i).Source.GetRefState = 0
+						AllStrDataList(i).Trans.lReferenceNum = 0
+						AllStrDataList(i).Trans.GetRefState = 0
+					Next i
 				Case "NotPE32","NotPE64"
-					If AllStrDataList(0).Moveable <> 0 Then
-						For i = 0 To UBound(AllStrDataList)
-							AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
-							AllStrDataList(i).Source.lReferenceNum = 0
-							AllStrDataList(i).Source.GetRefState = 0
-							AllStrDataList(i).Trans.lReferenceNum = 0
-							AllStrDataList(i).Trans.GetRefState = 0
-						Next i
-					End If
+					DlgEnable "RefListButton",True
+					For i = 0 To UBound(AllStrDataList)
+						AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
+						AllStrDataList(i).Source.lReferenceNum = 0
+						AllStrDataList(i).Source.GetRefState = 0
+						AllStrDataList(i).Trans.lReferenceNum = 0
+						AllStrDataList(i).Trans.GetRefState = 0
+					Next i
 				End Select
 			End If
 			Stemp3 = IIf(Selected(0) = TempList(0),False,True)
@@ -7004,31 +7042,41 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If Selected(16) <> TempList(16) Then DlgItem$ = "UseStrList"
 			If Stemp3 = True Then
 				'更新非 PE 文件和隐藏区段名
-				If SourceFile.Magic = "" Then
+				Select Case SourceFile.Magic
+				Case "NotPE32","NotPE64",""
 					If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
 						UseSectionList(0) = MsgList(10)
+						SourceFile.SecList(0).sName = MsgList(10)
+						TargetFile.SecList(0).sName = MsgList(10)
 						DlgText "OrgInSectionBox",MsgList(10)
 						DlgText "TrnInSectionBox",MsgList(10)
 					End If
-				ElseIf SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
-					If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
-						For i = 0 To UBound(UseSectionList)
-							If UseSectionList(i) = SourceFile.SecList(SourceFile.MaxSecIndex).sName Then
-								UseSectionList(i) = MsgList(9)
-								Exit For
-							End If
-						Next i
-						SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
-						If DlgText("OrgInSectionBox") = Temp Then DlgText "OrgInSectionBox",MsgList(9)
-						If DlgText("TrnInSectionBox") = Temp Then DlgText "TrnInSectionBox",MsgList(9)
+				Case Else
+					If SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
+						If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
+							Temp = SourceFile.SecList(SourceFile.MaxSecIndex).sName
+							For i = 0 To UBound(UseSectionList)
+								If UseSectionList(i) = SourceFile.SecList(SourceFile.MaxSecIndex).sName Then
+									UseSectionList(i) = MsgList(9)
+									Exit For
+								End If
+							Next i
+							SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+							TargetFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+							If DlgText("OrgInSectionBox") = Temp Then DlgText "OrgInSectionBox",MsgList(9)
+							If DlgText("TrnInSectionBox") = Temp Then DlgText "TrnInSectionBox",MsgList(9)
+						End If
 					End If
-				End If
+				End Select
 				'更新当前对话框字串
 				If getMsgList(UIDataList,MsgList,"EditString",1) = True Then
 	   				If TargetFile.hcsFile.FilePath = "" Then
 	   					MsgList(0) = Replace$(Replace$(MsgList(0),"%s",Version),"%d",MsgList(40))
 	   				Else
 	   					MsgList(0) = Replace$(Replace$(MsgList(0),"%s",Version),"%d",TargetFile.hcsFile.FilePath)
+	   					If Len(MsgList(0)) > 110 Then
+	   						MsgList(0) = Left$(MsgList(0),InStr(MsgList(0),"\")) & "..." & Right(MsgList(0),110 - Len(Left$(MsgList(0),InStr(MsgList(0),"\"))))
+	   					End If
 	   				End If
 	   				DlgText -1,MsgList(0)
    					DlgText "inSectionText",MsgList(1)
@@ -7290,7 +7338,7 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 
 					TempList = GetRefCodeList(AllStrDataList(i),False)
 					DlgListBoxArray "OrgVOffsetList",TempList()
-					TempList = GetRefCodeList(AllStrDataList(i),True,j)
+					TempList = GetRefCodeList(GetVARefForMoveMode2(TargetFile,AllStrDataList(i)),True,j)
 					DlgListBoxArray "TrnVOffsetList",TempList()
 					DlgValue "OrgVOffsetList",j
 					DlgValue "TrnVOffsetList",j
@@ -8221,18 +8269,32 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		If getMsgList(UIDataList,MsgList,"EditStringDlgFunc",1) = False Then Exit Function
 		Select Case SuppValue
 		Case 1	'帮助
-			ReDim TempArray(6) As String
+			ReDim TempArray(10) As String
 			TempArray(0) = MsgList(7)
 			TempArray(1) = MsgList(8)
 			TempArray(2) = MsgList(9)
 			TempArray(3) = MsgList(10)
 			TempArray(4) = MsgList(11)
 			TempArray(5) = MsgList(12)
-			TempArray(6) = MsgList(13)
+			TempArray(6) = MsgList(2)
+			TempArray(7) = MsgList(3)
+			TempArray(8) = MsgList(104)
+			TempArray(9) = MsgList(105)
+			TempArray(10) = MsgList(13)
 			Select Case ShowPopupMenu(TempArray,vbPopupUseRightButton)
 			Case 0
+				If StrToLong(Selected(30)) = 1 Then
+					If TargetFile.hcsFile.FilePath = SourceFile.hcsFile.FilePath Then
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1007,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					Else
+						If OpenCHM(CLng(DlgText("SuppValueBox")),1008,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+					End If
+				End If
 				Call Help("EditStringHelp")
 			Case 1
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1017,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("MainHelp")
 			Case 2
 				i = 0
@@ -8272,13 +8334,10 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				intArray = GetListBoxIndexs(GetDlgItem(CLng(DlgText("SuppValueBox")),DlgControlId("UseStrList")))
 				If CheckArrEmpty(intArray) = True Then
 					ReDim Preserve intArray(0) As Long
-					If DlgEnable("AllShowButton") = True Then
-						GetIndexList(StrIDIndexDic,UseStrDataList,intArray,False)
-					End If
-					Temp = AllStrDataList(intArray(0)).Source.sString & _
-						   "<->" & AllStrDataList(intArray(0)).Trans.sString & _
-						   " -scp:" & CStr$(AllStrDataList(intArray(0)).Source.CodePage) & _
-						   " -tcp:" & CStr$(AllStrDataList(intArray(0)).Trans.CodePage) & " -se -ac"
+					Temp = UseStrDataList(intArray(0)).Source.sString & _
+						   "<->" & UseStrDataList(intArray(0)).Trans.sString & _
+						   " -scp:" & CStr$(UseStrDataList(intArray(0)).Source.CodePage) & _
+						   " -tcp:" & CStr$(UseStrDataList(intArray(0)).Trans.CodePage) & " -se -ac -lng:" & Selected(0)
 				End If
 				If Dir$(MacroLoc & "\Module\modEncodeQuery.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modEncodeQuery.bas",Temp
@@ -8289,13 +8348,10 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				intArray = GetListBoxIndexs(GetDlgItem(CLng(DlgText("SuppValueBox")),DlgControlId("UseStrList")))
 				If CheckArrEmpty(intArray) = True Then
 					ReDim Preserve intArray(0) As Long
-					If DlgEnable("AllShowButton") = True Then
-						GetIndexList(StrIDIndexDic,UseStrDataList,intArray,False)
-					End If
-					Temp = AllStrDataList(intArray(0)).Source.sString & _
-						   "<->" & AllStrDataList(intArray(0)).Trans.sString & _
-						   " -scp:" & CStr$(AllStrDataList(intArray(0)).Source.CodePage) & _
-						   " -tcp:" & CStr$(AllStrDataList(intArray(0)).Trans.CodePage) & " -se -ac -td"
+					Temp = UseStrDataList(intArray(0)).Source.sString & _
+						   "<->" & UseStrDataList(intArray(0)).Trans.sString & _
+						   " -scp:" & CStr$(UseStrDataList(intArray(0)).Source.CodePage) & _
+						   " -tcp:" & CStr$(UseStrDataList(intArray(0)).Trans.CodePage) & " -se -ac -td -lng:" & Selected(0)
 				End If
 				If Dir$(MacroLoc & "\Module\modEncodeQuery.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modEncodeQuery.bas",Temp
@@ -8305,9 +8361,9 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Case 5
 				intArray = GetListBoxIndexs(GetDlgItem(CLng(DlgText("SuppValueBox")),DlgControlId("UseStrList")))
 				If CheckArrEmpty(intArray) = True Then
-					Temp = SourceFile.FilePath & "," & CStr$(UseStrDataList(intArray(0)).Source.lStartAddress)
+					Temp = SourceFile.FilePath & " -add:" & CStr$(UseStrDataList(intArray(0)).Source.lStartAddress) & " -lng:" & Selected(0)
 				Else
-					Temp = SourceFile.FilePath
+					Temp = SourceFile.FilePath & " -lng:" & Selected(0)
 				End If
 				If Dir$(MacroLoc & "\Module\modReferenceSearch.bas") <> "" Then
 					MacroRun MacroLoc & "\Module\modReferenceSearch.bas", Temp
@@ -8315,6 +8371,69 @@ Private Function EditStringDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 					MacroRun MacroLoc & "\modReferenceSearch.bas", Temp
 				End If
 			Case 6
+				Temp = TargetFile.FilePath
+				i = InStrRev(LCase$(TargetFile.FilePath),".bak")
+				If i > 1 Then
+					If Mid$(LCase$(TargetFile.FilePath),i) = ".bak" Then
+						Temp = Left$(TargetFile.FilePath,i - 1)
+					End If
+				End If
+				If Dir$(MacroLoc & "\Module\modEncodeModifier.bas") <> "" Then
+					MacroRun MacroLoc & "\Module\modEncodeModifier.bas",Temp
+				ElseIf Dir$(MacroLoc & "\modEncodeModifier.bas") <> "" Then
+					MacroRun MacroLoc & "\modEncodeModifier.bas",Temp
+				End If
+			Case 7
+				Temp = TargetFile.FilePath
+				i = InStrRev(LCase$(TargetFile.FilePath),".bak")
+				If i > 1 Then
+					If Mid$(LCase$(TargetFile.FilePath),i) = ".bak" Then
+						Temp = Left$(TargetFile.FilePath,i - 1)
+					End If
+				End If
+				If Dir$(MacroLoc & "\Module\modPESubFile.bas") <> "" Then
+					MacroRun MacroLoc & "\Module\modPESubFile.bas",Temp
+				ElseIf Dir$(MacroLoc & "\modPESubFile.bas") <> "" Then
+					MacroRun MacroLoc & "\modPESubFile.bas",Temp
+				End If
+			Case 8
+				If PSL.SelectFile(Temp,False,MsgList(107),MsgList(106)) = False Then Exit Function
+				If (LCase$(Temp) Like "*.bat") = False Then
+					If InStrRev(Temp,".") = 0 Then Temp = Temp & ".dat"
+				End If
+				If SaveKey(HKEY_CURRENT_USER,"Software\VB And VBA Program Settings\PSLHardCodedString\",Temp) = True Then
+					MsgBox MsgList(108),vbOkOnly+vbInformation,MsgList(1)
+				Else
+					MsgBox Replace$(MsgList(109),"%s","HKCU\Software\VB And VBA Program Settings\PSLHardCodedString"),vbOkOnly+vbInformation,MsgList(1)
+				End If
+			Case 9
+				If MsgBox(MsgList(110),vbYesNo+vbInformation,MsgList(0)) = vbNo Then Exit Function
+				If PSL.SelectFile(Temp,True,MsgList(107),MsgList(111)) = False Then Exit Function
+				If RestoreKey(HKEY_CURRENT_USER,"Software\VB And VBA Program Settings\PSLHardCodedString\",Temp) = False Then
+					MsgBox MsgList(113),vbOkOnly+vbInformation,MsgList(1)
+					Exit Function
+				ElseIf MsgBox(Replace$(MsgList(112),"%s","HKCS\Software\VB And VBA Program Settings\PSLHardCodedString"),vbYesNo+vbInformation,MsgList(0)) = vbNo Then
+					Exit Function
+				End If
+				'读取设置
+				GetSettings("")
+				'备份设置
+				SelectedBak = Selected
+				UpdateSetBak = UpdateSet
+				ExtractSetBak = ExtractSet
+				StrTypeListBak = StrTypeList
+				LFListBak = LFList
+				'重新获取字串过滤列表的设置
+				GetSettings("FilterStrDic")
+				'新获取字串保留列表的设置
+				GetSettings("ReserveStrDic")
+				'获取过滤字串列表字典为字串过滤显示用
+				TempList = ReSplit(ReadBinaryFile(ExtractSet(35),CP_UNICODELITTLE,True),vbNullChar)
+				StrList2StrDic(FilterStrDic,TempList,StrToLong(ReSplit(FilterStrSet(17),ItemJoinStr)(1)),1)
+			Case 10
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1002,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("About")
 			End Select
 			Exit Function
@@ -8828,9 +8947,9 @@ Private Function ManageStrType(File As FILE_PROPERTIE,UseIndexList() As Long,New
 		'获取使用的字串类型名称列表
 		MsgList = GetStrTypeNameList(OrgStrTypeList)
 		'计算要增加的自定义字串类型
-		AddTypeList = ChangeList(NewTypeList,MsgList)
+		AddTypeList = ChangeList(NewTypeList,ChangeList(MsgList,NewTypeList,1))
 		'计算要删除的自定义字串类型
-		DelTypeList = ChangeList(MsgList,NewTypeList)
+		DelTypeList = ChangeList(MsgList,ChangeList(NewTypeList,MsgList,1))
 		'组织提示消息
 		n = IIf(CheckArray(AddTypeList) = True,UBound(AddTypeList) + 1,0)
 		m = IIf(CheckArray(DelTypeList) = True,UBound(DelTypeList) + 1,0)
@@ -10208,11 +10327,20 @@ Private Function WriteStrings(trnFile As FILE_PROPERTIE,ByVal hwnd As Long,intLi
 					'在整个 #US 块中移位，不论翻译与否
 					't = trnFile.StreamList(File.USStreamID).lPointerToRawData + trnFile.StreamList(File.USStreamID).lSizeOfRawData - 1
 					WriteNotPEString(File,FN1,FN2,AllStrDataList,m,i,t,Mode,k)
-					'if i > 0 Then FN2.SizeOfFile = i
+					If i > 0 Then FN2.SizeOfFile = i
 					'修改 #US 字串流的大小
 					'If j > 0 Then
 					'	PutBytes(FN2,File.StreamList(File.USStreamID).RWA + 4,Val2Bytes(NetFreeByte.Length,4),4,Mode)
 					'End If
+					If UnLoadFile(FN1,0,Mode) = False Or UnLoadFile(FN2,FN2.SizeOfFile,Mode) = False Then GoTo ExitFunction
+					'打开文件
+					Mode = LoadFile(File.FilePath,FN2,0,1,0,StrToLong(Selected(1)))
+					If Mode < -1 Then GoTo ExitFunction
+					Mode = LoadFile(trnFile.FilePath & ".bak",FN1,0,0,0,Mode)
+					If Mode < -1 Then
+						UnLoadFile(FN2,0,Mode)
+						GoTo ExitFunction
+					End If
 					'修改引用代码
 					If intArry(10) > -1 Then
 						Dim Msg As PROGRESS_MSG
@@ -10224,8 +10352,9 @@ Private Function WriteStrings(trnFile As FILE_PROPERTIE,ByVal hwnd As Long,intLi
 						With AllStrDataList(intArry(10))
 							If WriteNETRefCode(trnFile,File,FN1,FN2,.Source.lStartAddress + .StrType, _
 								AllStrDataList(i).Source.lStartAddress,.Trans.lStartAddress + .StrType, _
-								AllStrDataList(i).Trans.lStartAddress,Mode,Msg) < 1 Then
+								AllStrDataList(i).Trans.lStartAddress,k,Mode,Msg) < 1 Then
 								MsgBox MsgList(44),vbOkOnly+vbInformation,MsgList(25)
+								If UnLoadFile(FN1,0,Mode) = False Or UnLoadFile(FN2,FN2.SizeOfFile,Mode) = False Then GoTo ExitFunction
 								GoTo ExitFunction
 							End If
 						End With
@@ -11403,7 +11532,7 @@ Private Function AddString(orgFile As FILE_PROPERTIE,AddStrSet() As String,IDLis
 				.lMaxAddress = DataList(n).Source.lMaxAddress
 				'过滤字串
 				If AddStrSet(1) = "1" Then
-					If DataList(n).Source.sString <> .sString Then GoTo NextNo
+					If InStr(DataList(n).Source.sString,.sString) = 0 Then GoTo NextNo
 				End If
 				If Dic.Exists(DataList(n).Source.lStartAddress) Then GoTo NextNo
 				If AddStrSet(3) = "1" Then
@@ -11791,25 +11920,21 @@ Private Function AddStringSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If UseRefTypeList(0).Template <> UseRefTypeList(1).Template Then
 				Select Case SourceFile.Magic
 				Case ""
-					If AllStrDataList(0).Moveable = 0 Then
-						For i = 0 To UBound(AllStrDataList)
-							AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
-							AllStrDataList(i).Source.lReferenceNum = 0
-							AllStrDataList(i).Source.GetRefState = 0
-							AllStrDataList(i).Trans.lReferenceNum = 0
-							AllStrDataList(i).Trans.GetRefState = 0
-						Next i
-					End If
+					For i = 0 To UBound(AllStrDataList)
+						AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
+						AllStrDataList(i).Source.lReferenceNum = 0
+						AllStrDataList(i).Source.GetRefState = 0
+						AllStrDataList(i).Trans.lReferenceNum = 0
+						AllStrDataList(i).Trans.GetRefState = 0
+					Next i
 				Case "NotPE32","NotPE64"
-					If AllStrDataList(0).Moveable <> 0 Then
-						For i = 0 To UBound(AllStrDataList)
-							AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
-							AllStrDataList(i).Source.lReferenceNum = 0
-							AllStrDataList(i).Source.GetRefState = 0
-							AllStrDataList(i).Trans.lReferenceNum = 0
-							AllStrDataList(i).Trans.GetRefState = 0
-						Next i
-					End If
+					For i = 0 To UBound(AllStrDataList)
+						AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
+						AllStrDataList(i).Source.lReferenceNum = 0
+						AllStrDataList(i).Source.GetRefState = 0
+						AllStrDataList(i).Trans.lReferenceNum = 0
+						AllStrDataList(i).Trans.GetRefState = 0
+					Next i
 				End Select
 			End If
 			If Selected(16) <> TempList(16) Then
@@ -11826,21 +11951,27 @@ Private Function AddStringSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End If
 			If Selected(0) <> TempList(0) Then
 				'重置非 PE 文件
-				If SourceFile.Magic = "" Then
+				Select Case SourceFile.Magic
+				Case "NotPE32","NotPE64",""
 					If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
 						UseSectionList(0) = MsgList(10)
+						SourceFile.SecList(0).sName = MsgList(10)
+						TargetFile.SecList(0).sName = MsgList(10)
 					End If
-				ElseIf SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
-					If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
-						For i = 0 To UBound(UseSectionList)
-							If UseSectionList(i) = SourceFile.SecList(SourceFile.MaxSecIndex).sName Then
-								UseSectionList(i) = MsgList(9)
-								Exit For
-							End If
-						Next i
-						SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+				Case Else
+					If SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
+						If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
+							For i = 0 To UBound(UseSectionList)
+								If UseSectionList(i) = SourceFile.SecList(SourceFile.MaxSecIndex).sName Then
+									UseSectionList(i) = MsgList(9)
+									Exit For
+								End If
+							Next i
+							SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+							TargetFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+						End If
 					End If
-				End If
+				End Select
 				'重置当前对话框字串
 				If getMsgList(UIDataList,MsgList,"AddStringSet",1) = True Then
 					DlgText -1,MsgList(0)
@@ -13653,8 +13784,8 @@ Private Function ParseHCSFile(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPERTI
 	For i = 0 To t
 		With DataList(i)
 			If .Moveable = 0 Then
-				'If CheckStrVal(DataList(i),3,0) = False Then
-				If CheckStrVals(DataList,i,t) = False Then
+				If CheckStrVal(DataList(i),3,0) = False Then
+				'If CheckStrVals(DataList,i,t) = False Then
 					'检查占用的地址是否在字串所在节
 					If .Trans.inSectionID = .Source.inSectionID Then
 						'检查占用的地址是否是字串地址
@@ -13665,8 +13796,8 @@ Private Function ParseHCSFile(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPERTI
 							.MoveType = 1
 							'标记占有其他字串的空间为占有
 							FreeByteList(FreeByteDic.Item(DataList(k).ID)).MoveType = .ID
-							'被占用的字串的最小地址小于当前字串的最大地址时
-							'重置当前字串及被占用字串的地址 (会造成 MoveMode > 2 的移位模式丢失)
+							'被占用字串的开始地址小于当前字串的最大地址时
+							'重置当前字串及被占用字串的地址 (该操作会造成 MoveMode > 2 的移位模式丢失)
 							ResetStrVal(trnFile,DataList,FreeByteList,i,1)
 						Else
 							'检查占用的地址是否是节尾地址
@@ -14252,7 +14383,6 @@ Private Function ImportSrcString(orgFile As FILE_PROPERTIE,ImportSet() As String
 	End With
 	Erase TempArray
 	Set Matches = Nothing
-	Set Dic = Nothing: Set DataDic = Nothing
 	'显示完成率
 	If ShowMsg > 0 Then
 		SetTextBoxString ShowMsg,MsgList(0) & "100%"
@@ -14264,12 +14394,13 @@ Private Function ImportSrcString(orgFile As FILE_PROPERTIE,ImportSet() As String
 		'处理导入数据
 		ReDim Preserve IDList(ImportSrcString - 1) As Long
 		ReDim Preserve DataList(n - 1) As STRING_PROPERTIE
-		Set StrIDIndexDic = DataDic: Set DataDic = Nothing
+		Set StrIDIndexDic = DataDic
 		'获取字串的引用列表和引用地址前的自定义类型，并过滤不需要提取的标准字串和无引用字串
 		i = IIf(IIf(TempList(10) = "0",0,TagType) = 0,0,4)
 		i = i + StrToLong(TempList(48)) + IIf(StrToLong(TempList(11)) = 0,0,2)
 		ImportSrcString = getVAListAndStrTypeByVA(orgFile,FN,DataList,TypeList,IDList,n - ImportSrcString,i,Mode,MsgList(2),ShowMsg,True)
 	End If
+	Set Dic = Nothing: Set DataDic = Nothing
 	Select Case ImportSrcString
 	Case Is > 0
 		'记录字串类型数组
@@ -14471,12 +14602,7 @@ Private Function ImportTranString(trnFile As FILE_PROPERTIE,ImportSet() As Strin
 		End If
 		'检查文件类型并读取来源文件头
 		File.FilePath = ImportSet(1)
-		Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-		Case "PE","NET",""
-			GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-		Case "MAC"
-			GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-		End Select
+		GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType)
 		If File.Magic = "" Then File.Magic = trnFile.Magic
 		'获取二个文件每个节的偏移地址差额(File - orgFile)
 		orgList = GetSecHeaderDiff(trnFile,File)
@@ -14853,10 +14979,8 @@ Private Function GetStrAddressByVA(File As FILE_PROPERTIE,FN As FILE_IMAGE,strDa
 				RVA = GetLong(FN,x,Mode)
 			ElseIf UseRefTypeList(0).ByteOrder = 0 Then
 				RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,x,Mode),UseRefTypeList(0).ByteLength,False)
-				RVA = Eval(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)))
 			Else
 				RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,x,Mode),UseRefTypeList(0).ByteLength,True)
-				RVA = Eval(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)))
 			End If
 			'获取引用地址所在节的虚拟开始地址和偏移开始地址的差额
 			With File.SecList(.inSecID)
@@ -14867,15 +14991,14 @@ Private Function GetStrAddressByVA(File As FILE_PROPERTIE,FN As FILE_IMAGE,strDa
 		On Error GoTo 0
 		'按引用代码值获取字串地址
 		Select Case File.Magic
-		Case "PE64","NET64","MAC64","NotPE64"
-			'按引用地址获取引用代码值，字串所在区段都等于或大于引用所在区段
-			On Error GoTo NextNum
+		Case "PE64","NET64","MAC64"
+			On Error GoTo NextPE64
 			For j = 0 To File.MaxSecIndex - 1
 				With File.SecList(j)
 					If .lPointerToRawData >= ROffset Then
 						k = .lVirtualAddress - .lPointerToRawData
 						k = CheckLongPlus(RVA,x + VRK + 4 - k)
-						If k > x Then
+						If k > x Then	'字串地址都等于或大于引用地址
 							If k >= .lPointerToRawData And k < .lPointerToRawData + .lSizeOfRawData - 1 Then
 								If Not Dic.Exists(k) Then
 									Dic.Add(k,i)
@@ -14888,28 +15011,81 @@ Private Function GetStrAddressByVA(File As FILE_PROPERTIE,FN As FILE_IMAGE,strDa
 						End If
 					End If
 				End With
-				NextNum:
+				NextPE64:
 			Next j
 			On Error GoTo 0
-		Case Else
-			If Not Dic.Exists(RVA) Then
-				Dic.Add(RVA,i)
-				On Error GoTo NextPos
-				For j = 0 To File.MaxSecIndex - 1
-					With File.SecList(j)
+		Case "PE32","NET32","MAC32"
+			On Error GoTo NextPE32
+			For j = 0 To File.MaxSecIndex - 1
+				With File.SecList(j)
+					If .SubSecs > 0 Then
+						For x = 0 To .SubSecs - 1
+							k = .SubSecList(x).lVirtualAddress - .SubSecList(x).lPointerToRawData
+							k = (RVA - File.ImageBase) - k
+							If k >= .SubSecList(x).lPointerToRawData And _
+								k < .SubSecList(x).lPointerToRawData + .SubSecList(x).lSizeOfRawData - 1 Then
+								If Not Dic.Exists(k) Then
+									Dic.Add(k,i)
+									DataList(n) = strData
+									DataList(n).Source.lStartAddress = k
+									DataList(n).Source.inSectionID = j
+									n = n + 1
+								End If
+							End If
+						Next x
+					Else
 						k = .lVirtualAddress - .lPointerToRawData
 						k = (RVA - File.ImageBase) - k
 						If k >= .lPointerToRawData And k < .lPointerToRawData + .lSizeOfRawData - 1 Then
+							If Not Dic.Exists(k) Then
+								Dic.Add(k,i)
+								DataList(n) = strData
+								DataList(n).Source.lStartAddress = k
+								DataList(n).Source.inSectionID = j
+								n = n + 1
+							End If
+						End If
+					End If
+				End With
+				NextPE32:
+			Next j
+			On Error GoTo 0
+		Case "NotPE64"
+			On Error GoTo NextNotPE64
+			With File.SecList(0)
+				k = Eval(Replace(Replace(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)), _
+					"{refstartaddress}",CStr(x)),"{strtypelength}",CStr(strData.Source.StrTypeLength)))
+				If k > x Then	'字串地址都等于或大于引用地址
+					If k >= .lPointerToRawData And k < .lPointerToRawData + .lSizeOfRawData - 1 Then
+						If Not Dic.Exists(k) Then
+							Dic.Add(k,i)
 							DataList(n) = strData
 							DataList(n).Source.lStartAddress = k
-							DataList(n).Source.inSectionID = j
+							DataList(n).Source.inSectionID = 0
 							n = n + 1
 						End If
-					End With
-					NextPos:
-				Next j
-				On Error GoTo 0
-			End If
+					End If
+				End If
+			End With
+			NextNotPE64:
+			On Error GoTo 0
+		Case "NotPE32"
+			On Error GoTo NextNotPE32
+			With File.SecList(0)
+				k = Eval(Replace(Replace(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)), _
+					"{refstartaddress}",CStr(x)),"{strtypelength}",CStr(strData.Source.StrTypeLength)))
+				If k >= .lPointerToRawData And k < .lPointerToRawData + .lSizeOfRawData - 1 Then
+					If Not Dic.Exists(k) Then
+						Dic.Add(k,i)
+						DataList(n) = strData
+						DataList(n).Source.lStartAddress = k
+						DataList(n).Source.inSectionID = 0
+						n = n + 1
+					End If
+				End If
+			End With
+			NextNotPE32:
+			On Error GoTo 0
 		End Select
 		NextNo:
 	Next i
@@ -15105,7 +15281,7 @@ Private Sub FileByteView(File As FILE_PROPERTIE,DataList() As STRING_PROPERTIE,i
 								"%s!2!",ValToStr(.lHexLength + .lCharLength,0,True)), _
 								"%s!3!",Byte2Hex(CorSigCompressByte(.lHexLength + .lCharLength),0,-1))
 				TempList(5) = Replace$(MsgList(6),"%s",CStr$(.lReferenceNum))
-				TempList(6) = Replace$(MsgList(7),"%s",SeparatHex(Byte2Hex(GetBytes(FN1,16,.lStartAddress - 16,Mode),0,-1)))
+				TempList(6) = Replace$(MsgList(7),"%s",SeparatHex(Byte2Hex(GetBytes(FN1,32,.lStartAddress - 32,Mode),0,-1)))
 				If .lReferenceNum > 0 Then
 					ReDim Preserve TempList(10 + .lReferenceNum) As String
 					TempList(7) = MsgList(8) & MsgList(8) & vbCrLf
@@ -15137,12 +15313,12 @@ Private Sub FileByteView(File As FILE_PROPERTIE,DataList() As STRING_PROPERTIE,i
 									"%s!2!",ValToStr(.lHexLength + .lCharLength,0,True)), _
 									"%s!3!",Byte2Hex(CorSigCompressByte(.lHexLength + .lCharLength),0,-1))
 					TempList(5) = Replace$(MsgList(16),"%s",CStr$(.lReferenceNum))
-					TempList(6) = Replace$(MsgList(17),"%s",SeparatHex(Byte2Hex(GetBytes(FN2,16,.lStartAddress - 16,Mode),0,-1)))
+					TempList(6) = Replace$(MsgList(17),"%s",SeparatHex(Byte2Hex(GetBytes(FN2,32,.lStartAddress - 32,Mode),0,-1)))
 				End With
 				With DataList(intList(i)).Source
 					If .lReferenceNum > 0 Then
 						ReDim TempArray(0) As String
-						TempArray = GetRefCodeList(DataList(intList(i)),True)
+						TempArray = GetRefCodeList(GetVARefForMoveMode2(File,DataList(intList(i))),True)
 						ReDim Preserve TempList(10 + .lReferenceNum) As String
 						TempList(7) = MsgList(8) & MsgList(8) & vbCrLf
 						TempList(8) = MsgList(9)
@@ -15175,7 +15351,7 @@ Private Sub FileByteView(File As FILE_PROPERTIE,DataList() As STRING_PROPERTIE,i
 								"%s!2!",ValToStr(.lHexLength + .lCharLength,0,True)), _
 								"%s!3!",Byte2Hex(CorSigCompressByte(.lHexLength + .lCharLength),0,-1))
 				sb.AppendFormat "{0}",Replace$(MsgList(6),"%s",CStr$(.lReferenceNum))
-				sb.AppendFormat "{0}",Replace$(MsgList(7),"%s",SeparatHex(Byte2Hex(GetBytes(FN1,16,.lStartAddress - 16,Mode),0,-1)))
+				sb.AppendFormat "{0}",Replace$(MsgList(7),"%s",SeparatHex(Byte2Hex(GetBytes(FN1,32,.lStartAddress - 32,Mode),0,-1)))
 				If .lReferenceNum > 0 Then
 					sb.AppendFormat "{0}",MsgList(8) & MsgList(8) & vbCrLf
 					sb.AppendFormat "{0}",MsgList(9)
@@ -15205,12 +15381,12 @@ Private Sub FileByteView(File As FILE_PROPERTIE,DataList() As STRING_PROPERTIE,i
 									"%s!2!",ValToStr(.lHexLength + .lCharLength,0,True)), _
 									"%s!3!",Byte2Hex(CorSigCompressByte(.lHexLength + .lCharLength),0,-1))
 					sb.AppendFormat "{0}",Replace$(MsgList(16),"%s",CStr$(.lReferenceNum))
-					sb.AppendFormat "{0}",Replace$(MsgList(17),"%s",SeparatHex(Byte2Hex(GetBytes(FN2,16,.lStartAddress - 16,Mode),0,-1)))
+					sb.AppendFormat "{0}",Replace$(MsgList(17),"%s",SeparatHex(Byte2Hex(GetBytes(FN2,32,.lStartAddress - 32,Mode),0,-1)))
 				End With
 				With DataList(intList(i)).Source
 					If .lReferenceNum > 0 Then
 						ReDim TempArray(0) As String
-						TempArray = GetRefCodeList(DataList(intList(i)),True)
+						TempArray = GetRefCodeList(GetVARefForMoveMode2(File,DataList(intList(i))),True)
 						sb.AppendFormat "{0}",MsgList(8) & MsgList(8) & vbCrLf
 						sb.AppendFormat "{0}",MsgList(9)
 						sb.AppendFormat "{0}",MsgList(8) & MsgList(8) & vbCrLf
@@ -15265,6 +15441,7 @@ End Sub
 Private Sub StrDataView(File As FILE_PROPERTIE,uDataList() As STRING_PROPERTIE,oDataList() As STRING_PROPERTIE, _
 			intList() As Long,ByVal AppID As Long,ByVal Mode As Long,ByVal DisPlayFormat As Boolean)
 	Dim i As Long,j As Long,n As Long,FN As Variant,MsgList() As String,sb As Object
+	Dim uData As STRING_SUB_PROPERTIE,oData As STRING_SUB_PROPERTIE
 	If getMsgList(UIDataList,MsgList,"StrDataView",2) = False Then Exit Sub
 	If Mode = 4 Then
 		MsgList(0) = MsgList(1)
@@ -15289,15 +15466,15 @@ Private Sub StrDataView(File As FILE_PROPERTIE,uDataList() As STRING_PROPERTIE,o
 	If sb Is Nothing Then
 		ReDim TempList(40) As String
 		For i = LBound(intList) To UBound(intList)
-			If Mode = 4 Then
-				If StrIDIndexDicBak.Exists(uDataList(intList(i)).ID) Then
-					j = StrIDIndexDicBak.Item(uDataList(intList(i)).ID)
-					n = 1
-				Else
-					j = 0: n = 2
-				End If
-			End If
 			With uDataList(intList(i))
+				If Mode = 4 Then
+					If StrIDIndexDicBak.Exists(.ID) Then
+						j = StrIDIndexDicBak.Item(.ID)
+						n = 1
+					Else
+						j = 0: n = 2
+					End If
+				End If
 				TempList(0) = "#" & CStr$(.ID) & DataInfo(MsgList(21),CStr$(intList(i)),CStr$(j),MsgList,n)
 				TempList(1) = DataInfo(MsgList(22),CStr$(.StrType),CStr$(oDataList(j).StrType),MsgList,n)
 				TempList(2) = DataInfo(MsgList(23),CStr$(.WriteType),CStr$(oDataList(j).WriteType),MsgList,n)
@@ -15326,7 +15503,7 @@ Private Sub StrDataView(File As FILE_PROPERTIE,uDataList() As STRING_PROPERTIE,o
 				TempList(19) = DataInfo(MsgList(40),CStr$(.Source.CodePage),CStr$(oDataList(j).Source.CodePage),MsgList,n)
 				TempList(20) = DataInfo(MsgList(41),CStr$(.Source.lReferenceNum),CStr$(oDataList(j).Source.lReferenceNum),MsgList,n)
 
-				TempList(21) = DataInfo(MsgList(42),StrListJoin(RefList2StrList(uDataList(intList(i)).Source,1),ValJoinStr), _
+				TempList(21) = DataInfo(MsgList(42),StrListJoin(RefList2StrList(.Source,1),ValJoinStr), _
 							StrListJoin(RefList2StrList(oDataList(j).Source,1),ValJoinStr),MsgList,n)
 				TempList(22) = DataInfo(MsgList(43),StrListJoin(DecStrListToHexStrList(RefList2StrList(.Source,0),File.FileSize,DisPlayFormat),ValJoinStr), _
 							StrListJoin(DecStrListToHexStrList(RefList2StrList(oDataList(j).Source,0),File.FileSize,DisPlayFormat),ValJoinStr),MsgList,n)
@@ -15368,30 +15545,32 @@ Private Sub StrDataView(File As FILE_PROPERTIE,uDataList() As STRING_PROPERTIE,o
 				TempList(32) = DataInfo(MsgList(52),CStr$(.Trans.lHexLength),CStr$(oDataList(j).Trans.lHexLength),MsgList,n)
 				TempList(33) = DataInfo(MsgList(53),CStr$(.Trans.lMaxHexLength),CStr$(oDataList(j).Trans.lMaxHexLength),MsgList,n)
 				TempList(34) = DataInfo(MsgList(54),CStr$(.Trans.CodePage),CStr$(oDataList(j).Trans.CodePage),MsgList,n)
-				TempList(35) = DataInfo(MsgList(55),CStr$(.Trans.lReferenceNum),CStr$(oDataList(j).Trans.lReferenceNum),MsgList,n)
-				TempList(36) = DataInfo(MsgList(56),StrListJoin(RefList2StrList(uDataList(intList(i)).Trans,1),ValJoinStr), _
-							StrListJoin(RefList2StrList(oDataList(j).Trans,1),ValJoinStr),MsgList,n)
-				TempList(37) = DataInfo(MsgList(57),StrListJoin(DecStrListToHexStrList(RefList2StrList(.Trans,0),File.FileSize,DisPlayFormat),ValJoinStr), _
-							StrListJoin(DecStrListToHexStrList(RefList2StrList(oDataList(j).Trans,0),File.FileSize,DisPlayFormat),ValJoinStr),MsgList,n)
-				TempList(38) = DataInfo(MsgList(58),StrListJoin(SecIDListToNameList(RefList2StrList(.Trans,3),TempArray),ValJoinStr), _
-							StrListJoin(SecIDListToNameList(RefList2StrList(oDataList(j).Trans,3),TempArray),ValJoinStr),MsgList,n)
-				TempList(39) = DataInfo(MsgList(59),StrListJoin(RefList2StrList(.Trans,2),ValJoinStr), _
-							StrListJoin(RefList2StrList(oDataList(j).Trans,2),ValJoinStr),MsgList,n)
+				uData = GetVARefForMoveMode2(File,uDataList(intList(i))).Trans
+				oData = GetVARefForMoveMode2(File,oDataList(j)).Trans
+				TempList(35) = DataInfo(MsgList(55),CStr$(uData.lReferenceNum),CStr$(oData.lReferenceNum),MsgList,n)
+				TempList(36) = DataInfo(MsgList(56),StrListJoin(RefList2StrList(uData,1),ValJoinStr), _
+							StrListJoin(RefList2StrList(oData,1),ValJoinStr),MsgList,n)
+				TempList(37) = DataInfo(MsgList(57),StrListJoin(DecStrListToHexStrList(RefList2StrList(uData,0),File.FileSize,DisPlayFormat),ValJoinStr), _
+							StrListJoin(DecStrListToHexStrList(RefList2StrList(oData,0),File.FileSize,DisPlayFormat),ValJoinStr),MsgList,n)
+				TempList(38) = DataInfo(MsgList(58),StrListJoin(SecIDListToNameList(RefList2StrList(uData,3),TempArray),ValJoinStr), _
+							StrListJoin(SecIDListToNameList(RefList2StrList(oData,3),TempArray),ValJoinStr),MsgList,n)
+				TempList(39) = DataInfo(MsgList(59),StrListJoin(RefList2StrList(uData,2),ValJoinStr), _
+							StrListJoin(RefList2StrList(oData,2),ValJoinStr),MsgList,n)
 				TempList(40) = DataInfo(MsgList(60),CStr$(.Trans.StrTypeLength),CStr$(oDataList(j).Trans.StrTypeLength),MsgList,n)
 			End With
 			WriteBinaryFile FN,CP_UNICODELITTLE,Join$(TempList,"") & MsgList(5) & MsgList(5) & vbCrLf,True
 		Next i
 	Else
 		For i = LBound(intList) To UBound(intList)
-			If Mode = 4 Then
-				If StrIDIndexDicBak.Exists(uDataList(intList(i)).ID) Then
-					j = StrIDIndexDicBak.Item(uDataList(intList(i)).ID)
-					n = 1
-				Else
-					j = 0: n = 2
-				End If
-			End If
 			With uDataList(intList(i))
+				If Mode = 4 Then
+					If StrIDIndexDicBak.Exists(.ID) Then
+						j = StrIDIndexDicBak.Item(.ID)
+						n = 1
+					Else
+						j = 0: n = 2
+					End If
+				End If
 				sb.AppendFormat "{0}","#" & CStr$(.ID) & DataInfo(MsgList(21),CStr$(intList(i)),CStr$(j),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(22),CStr$(.StrType),CStr$(oDataList(j).StrType),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(23),CStr$(.WriteType),CStr$(oDataList(j).WriteType),MsgList,n)
@@ -15420,7 +15599,7 @@ Private Sub StrDataView(File As FILE_PROPERTIE,uDataList() As STRING_PROPERTIE,o
 				sb.AppendFormat "{0}",DataInfo(MsgList(40),CStr$(.Source.CodePage),CStr$(oDataList(j).Source.CodePage),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(41),CStr$(.Source.lReferenceNum),CStr$(oDataList(j).Source.lReferenceNum),MsgList,n)
 
-				sb.AppendFormat "{0}",DataInfo(MsgList(42),StrListJoin(RefList2StrList(uDataList(intList(i)).Source,1),ValJoinStr), _
+				sb.AppendFormat "{0}",DataInfo(MsgList(42),StrListJoin(RefList2StrList(.Source,1),ValJoinStr), _
 							StrListJoin(RefList2StrList(oDataList(j).Source,1),ValJoinStr),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(43),StrListJoin(DecStrListToHexStrList(RefList2StrList(.Source,0),File.FileSize,DisPlayFormat),ValJoinStr), _
 							StrListJoin(DecStrListToHexStrList(RefList2StrList(oDataList(j).Source,0),File.FileSize,DisPlayFormat),ValJoinStr),MsgList,n)
@@ -15462,15 +15641,17 @@ Private Sub StrDataView(File As FILE_PROPERTIE,uDataList() As STRING_PROPERTIE,o
 				sb.AppendFormat "{0}",DataInfo(MsgList(52),CStr$(.Trans.lHexLength),CStr$(oDataList(j).Trans.lHexLength),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(53),CStr$(.Trans.lMaxHexLength),CStr$(oDataList(j).Trans.lMaxHexLength),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(54),CStr$(.Trans.CodePage),CStr$(oDataList(j).Trans.CodePage),MsgList,n)
-				sb.AppendFormat "{0}",DataInfo(MsgList(55),CStr$(.Trans.lReferenceNum),CStr$(oDataList(j).Trans.lReferenceNum),MsgList,n)
-				sb.AppendFormat "{0}",DataInfo(MsgList(56),StrListJoin(RefList2StrList(uDataList(intList(i)).Trans,1),ValJoinStr), _
-							StrListJoin(RefList2StrList(oDataList(j).Trans,1),ValJoinStr),MsgList,n)
-				sb.AppendFormat "{0}",DataInfo(MsgList(57),StrListJoin(DecStrListToHexStrList(RefList2StrList(.Trans,0),File.FileSize,DisPlayFormat),ValJoinStr), _
-							StrListJoin(DecStrListToHexStrList(RefList2StrList(oDataList(j).Trans,0),File.FileSize,DisPlayFormat),ValJoinStr),MsgList,n)
-				sb.AppendFormat "{0}",DataInfo(MsgList(58),StrListJoin(SecIDListToNameList(RefList2StrList(.Trans,3),TempArray),ValJoinStr), _
-							StrListJoin(SecIDListToNameList(RefList2StrList(oDataList(j).Trans,3),TempArray),ValJoinStr),MsgList,n)
-				sb.AppendFormat "{0}",DataInfo(MsgList(59),StrListJoin(RefList2StrList(.Trans,2),ValJoinStr), _
-							StrListJoin(RefList2StrList(oDataList(j).Trans,2),ValJoinStr),MsgList,n)
+				uData = GetVARefForMoveMode2(File,uDataList(intList(i))).Trans
+				oData = GetVARefForMoveMode2(File,oDataList(j)).Trans
+				sb.AppendFormat "{0}",DataInfo(MsgList(55),CStr$(uData.lReferenceNum),CStr$(oData.lReferenceNum),MsgList,n)
+				sb.AppendFormat "{0}",DataInfo(MsgList(56),StrListJoin(RefList2StrList(uData,1),ValJoinStr), _
+							StrListJoin(RefList2StrList(oData,1),ValJoinStr),MsgList,n)
+				sb.AppendFormat "{0}",DataInfo(MsgList(57),StrListJoin(DecStrListToHexStrList(RefList2StrList(uData,0),File.FileSize,DisPlayFormat),ValJoinStr), _
+							StrListJoin(DecStrListToHexStrList(RefList2StrList(oData,0),File.FileSize,DisPlayFormat),ValJoinStr),MsgList,n)
+				sb.AppendFormat "{0}",DataInfo(MsgList(58),StrListJoin(SecIDListToNameList(RefList2StrList(uData,3),TempArray),ValJoinStr), _
+							StrListJoin(SecIDListToNameList(RefList2StrList(oData,3),TempArray),ValJoinStr),MsgList,n)
+				sb.AppendFormat "{0}",DataInfo(MsgList(59),StrListJoin(RefList2StrList(uData,2),ValJoinStr), _
+							StrListJoin(RefList2StrList(oData,2),ValJoinStr),MsgList,n)
 				sb.AppendFormat "{0}",DataInfo(MsgList(60),CStr$(.Trans.StrTypeLength),CStr$(oDataList(j).Trans.StrTypeLength),MsgList,n)
 				sb.AppendFormat "{0}",MsgList(5) & MsgList(5) & vbCrLf
 			End With
@@ -15730,13 +15911,7 @@ Private Function ImportSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 							If MsgBox(MsgList(46) & MsgList(51),vbYesNo+vbInformation,MsgList(39)) = vbNo Then Exit Function
 						End If
 					End If
-					Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-					Case "PE","NET",""
-						i = GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-					Case "MAC"
-						i = GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-					End Select
-					If i = True Then
+					If GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType) = True Then
 						Temp = JoinStr & StrListJoin(UseSectionList,JoinStr) & JoinStr
 						TempList = UseSectionList
 						For i = 0 To File.MaxSecIndex
@@ -15967,12 +16142,7 @@ Private Function ImportSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(TempList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If GetFileInfo(File.FilePath,File) = False Then Exit Function
-			Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-			Case "PE","NET",""
-				GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-			Case "MAC"
-				GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-			End Select
+			GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType)
 			Call FileInfoView(File,FreeByteList,i,0,StrToLong(Selected(16)))
 		Case "GetStrSetButton"
         	Temp = Selected(0)
@@ -15993,25 +16163,21 @@ Private Function ImportSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If UseRefTypeList(0).Template <> UseRefTypeList(1).Template Then
 				Select Case SourceFile.Magic
 				Case ""
-					If AllStrDataList(0).Moveable = 0 Then
-						For i = 0 To UBound(AllStrDataList)
-							AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
-							AllStrDataList(i).Source.lReferenceNum = 0
-							AllStrDataList(i).Source.GetRefState = 0
-							AllStrDataList(i).Trans.lReferenceNum = 0
-							AllStrDataList(i).Trans.GetRefState = 0
-						Next i
-					End If
+					For i = 0 To UBound(AllStrDataList)
+						AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
+						AllStrDataList(i).Source.lReferenceNum = 0
+						AllStrDataList(i).Source.GetRefState = 0
+						AllStrDataList(i).Trans.lReferenceNum = 0
+						AllStrDataList(i).Trans.GetRefState = 0
+					Next i
 				Case "NotPE32","NotPE64"
-					If AllStrDataList(0).Moveable <> 0 Then
-						For i = 0 To UBound(AllStrDataList)
-							AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
-							AllStrDataList(i).Source.lReferenceNum = 0
-							AllStrDataList(i).Source.GetRefState = 0
-							AllStrDataList(i).Trans.lReferenceNum = 0
-							AllStrDataList(i).Trans.GetRefState = 0
-						Next i
-					End If
+					For i = 0 To UBound(AllStrDataList)
+						AllStrDataList(i).Moveable = Moveable(SourceFile,AllStrDataList(i))
+						AllStrDataList(i).Source.lReferenceNum = 0
+						AllStrDataList(i).Source.GetRefState = 0
+						AllStrDataList(i).Trans.lReferenceNum = 0
+						AllStrDataList(i).Trans.GetRefState = 0
+					Next i
 				End Select
 			End If
 			If Dir$(SourceFile.FilePath) = "" Then
@@ -16025,70 +16191,77 @@ Private Function ImportSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End If
 			If Selected(0) <> Temp Then
 				'重置非 PE 文件和隐藏区段名
-				If SourceFile.Magic = "" Then
+				Select Case SourceFile.Magic
+				Case "NotPE32","NotPE64",""
 					If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
 						UseSectionList(0) = MsgList(10)
+						SourceFile.SecList(0).sName = MsgList(10)
+						TargetFile.SecList(0).sName = MsgList(10)
 					End If
-				ElseIf SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
-					If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
-						For i = 0 To UBound(UseSectionList)
-							If UseSectionList(i) = SourceFile.SecList(SourceFile.MaxSecIndex).sName Then
-								UseSectionList(i) = MsgList(9)
-								Exit For
-							End If
-						Next i
-						SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+				Case Else
+					If SourceFile.SecList(SourceFile.MaxSecIndex).lSizeOfRawData > 0 Then
+						If getMsgList(UIDataList,MsgList,"CheckFile",1) = True Then
+							For i = 0 To UBound(UseSectionList)
+								If UseSectionList(i) = SourceFile.SecList(SourceFile.MaxSecIndex).sName Then
+									UseSectionList(i) = MsgList(9)
+									Exit For
+								End If
+							Next i
+							SourceFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+							TargetFile.SecList(SourceFile.MaxSecIndex).sName = MsgList(9)
+						End If
 					End If
-				End If
+				End Select
 				'重置当前对话框字串
-				If getMsgList(UIDataList,MsgList,"ImportSet",1) = False Then Exit Function
-				DlgText -1,IIf(DlgValue("ModeCheckBox") = 0,MsgList(52),MsgList(0))
-				i = DlgValue("ImpFileTypeListBox")
-				If DlgValue("ModeCheckBox") = 0 Then
-					TempList = ReSplit(MsgList(1),";")
-				Else
-					TempList = ReSplit(MsgList(2),";")
-				End If
-				DlgListBoxArray "ImpFileTypeListBox",TempList()
-				DlgValue "ImpFileTypeListBox",i
-   				DlgText "ImpFileGroup",MsgList(3)
-   				DlgText "ImpFileTypeText",MsgList(4)
-   				DlgText "ImpFilePathText",MsgList(5)
-   				DlgText "ImpFileBrowseButton",MsgList(6)
-   				DlgText "ImportTranOption",MsgList(7)
-   				DlgText "ImportTranText",MsgList(8)
-   				DlgText "SelectedStrBox",MsgList(9)
-   				DlgText "NotSelectedStrBox",MsgList(10)
-   				DlgText "TranslatedStrBox",MsgList(11)
-   				DlgText "NotTranslatedStrBox",MsgList(12)
-   				DlgText "SomeStrIDBox",MsgList(13)
-   				DlgText "NotSomeStrIDBox",MsgList(14)
-   				DlgText "LockedStrBox",MsgList(15)
-   				DlgText "NotLockedStrBox",MsgList(16)
-   				DlgText "OrgFileViewButton",MsgList(17)
-   				DlgText "ImpFileViewButton",MsgList(18)
-   				DlgText "CodepageGroup",MsgList(19)
-   				'重置代码页名称列表
-				i = DlgValue("CPNameList")
-				TempList = GetLangStrList(UniLangList,4,True)
-				DlgListBoxArray "CPValList",TempList()
-				DlgValue "CPValList",i
-				TempList = GetLangStrList(UniLangList,3,True)
-				DlgListBoxArray "CPNameList",TempList()
-				DlgValue "CPNameList",DlgValue("CPValList")
-   				DlgText "CodePageOPTText",MsgList(20)
-   				DlgText "ImportSrcGroup",MsgList(21)
-   				DlgText "ReplaceOPTButton",MsgList(22)
-   				DlgText "AdditionOPTButton",MsgList(23)
-   				DlgText "ReplaceOPTText",MsgList(24)
-   				DlgText "AdditionOPTText",MsgList(25)
-   				DlgText "SkipHeadersCheckBox",MsgList(26)
-   				DlgText "SkipStrCheckBox",MsgList(27)
-   				DlgText "ViewFileInfoButton",MsgList(28)
-   				DlgText "GetStrSetButton",MsgList(29)
-   				DlgText "ResetButton",MsgList(30)
-   				DlgText "AllSelectButton",MsgList(31)
-   				DlgText "RevSelectButton",MsgList(32)
+				If getMsgList(UIDataList,MsgList,"ImportSet",1) = True Then
+					DlgText -1,IIf(DlgValue("ModeCheckBox") = 0,MsgList(52),MsgList(0))
+					i = DlgValue("ImpFileTypeListBox")
+					If DlgValue("ModeCheckBox") = 0 Then
+						TempList = ReSplit(MsgList(1),";")
+					Else
+						TempList = ReSplit(MsgList(2),";")
+					End If
+					DlgListBoxArray "ImpFileTypeListBox",TempList()
+					DlgValue "ImpFileTypeListBox",i
+   					DlgText "ImpFileGroup",MsgList(3)
+   					DlgText "ImpFileTypeText",MsgList(4)
+   					DlgText "ImpFilePathText",MsgList(5)
+   					DlgText "ImpFileBrowseButton",MsgList(6)
+   					DlgText "ImportTranOption",MsgList(7)
+   					DlgText "ImportTranText",MsgList(8)
+   					DlgText "SelectedStrBox",MsgList(9)
+   					DlgText "NotSelectedStrBox",MsgList(10)
+   					DlgText "TranslatedStrBox",MsgList(11)
+   					DlgText "NotTranslatedStrBox",MsgList(12)
+   					DlgText "SomeStrIDBox",MsgList(13)
+   					DlgText "NotSomeStrIDBox",MsgList(14)
+   					DlgText "LockedStrBox",MsgList(15)
+   					DlgText "NotLockedStrBox",MsgList(16)
+   					DlgText "OrgFileViewButton",MsgList(17)
+   					DlgText "ImpFileViewButton",MsgList(18)
+   					DlgText "CodepageGroup",MsgList(19)
+   					'重置代码页名称列表
+					i = DlgValue("CPNameList")
+					TempList = GetLangStrList(UniLangList,4,True)
+					DlgListBoxArray "CPValList",TempList()
+					DlgValue "CPValList",i
+					TempList = GetLangStrList(UniLangList,3,True)
+					DlgListBoxArray "CPNameList",TempList()
+					DlgValue "CPNameList",DlgValue("CPValList")
+   					DlgText "CodePageOPTText",MsgList(20)
+   					DlgText "ImportSrcGroup",MsgList(21)
+   					DlgText "ReplaceOPTButton",MsgList(22)
+   					DlgText "AdditionOPTButton",MsgList(23)
+   					DlgText "ReplaceOPTText",MsgList(24)
+   					DlgText "AdditionOPTText",MsgList(25)
+   					DlgText "SkipHeadersCheckBox",MsgList(26)
+   					DlgText "SkipStrCheckBox",MsgList(27)
+   					DlgText "ViewFileInfoButton",MsgList(28)
+   					DlgText "GetStrSetButton",MsgList(29)
+   					DlgText "ResetButton",MsgList(30)
+   					DlgText "AllSelectButton",MsgList(31)
+   					DlgText "RevSelectButton",MsgList(32)
+   				End If
    			End If
    			'判断对话框字体是否已被改变
 			If FontComp(LFList(0),tmpLFList(0)) = True Then
@@ -16196,12 +16369,7 @@ Private Function ImportSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(TempList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If GetFileInfo(File.FilePath,File) = False Then Exit Function
-			Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-			Case "PE","NET",""
-				GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-			Case "MAC"
-				GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-			End Select
+			GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType)
 			Call FileInfoView(File,FreeByteList,i,0,StrToLong(Selected(16)))
 		End Select
 	End Select
@@ -16213,6 +16381,7 @@ Public Function FindSet(ByVal FindLoc As Long) As Boolean
 	Dim MsgList() As String
 	If getMsgList(UIDataList,MsgList,"FindSet",1) = False Then Exit Function
 	Begin Dialog UserDialog 650,259,MsgList(0),.FindSetDlgFunc ' %GRID:10,7,1,1
+		TextBox 0,0,0,21,.SuppValueBox
 		CheckBox 20,10,110,14,"",.ModeCheckBox
 		Text 20,10,110,14,MsgList(1),.FindText
 		DropListBox 140,7,330,21,MsgList(),.FindTextBox,1
@@ -16249,6 +16418,8 @@ Private Function FindSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 	Dim i As Long,j As Long,MsgList() As String
 	Select Case Action%
 	Case 1 ' 对话框窗口初始化
+		DlgText "SuppValueBox",CStr$(SuppValue)
+		DlgVisible "SuppValueBox",False
 		DlgVisible "ModeCheckBox",False
 		GetHistory(MsgList,"FindStrings","FindSetDlg")
 		DlgListBoxArray "FindTextBox",MsgList()
@@ -16332,6 +16503,9 @@ Private Function FindSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End If
 			FindSetDlgFunc = False
 		Case "HelpButton"
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1016,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("FindSetHelp")
 		Case "MatchFullWordBox"
 			If DlgValue("MatchFullWordBox") = 1 Then DlgValue "MatchFullTextBox",0
@@ -16362,6 +16536,9 @@ Private Function FindSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -16376,12 +16553,18 @@ Private Function FindSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 	Case 6 ' 函数快捷键
 		Select Case SuppValue
 		Case 1
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1016,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("FindSetHelp")
 		Case 2
 			If getMsgList(UIDataList,MsgList,"RegExpRuleTip",1) = False Then Exit Function
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -16510,6 +16693,51 @@ Private Function FindString(strData() As STRING_PROPERTIE,FindSet() As String,By
 	errHandle:
 	Set RegEx = Nothing
 	FindString = -2
+End Function
+
+
+'获取选定字串类型的前置字节长度，用于自定义引用算法
+Private Function GetStrTypeLength(TypeList() As STRING_TYPE,GetOption() As String,Optional ByVal Mode As Long) As String()
+	Dim i As Long
+	If Mode = 0 Then
+		ReDim TempList(0) As String
+	ElseIf GetOption(10) = "1" Then
+		Mode = 0
+		If CheckStrTypeArray(TypeList,0) = True Then	'自定义字串类型
+			ReDim TempList(UBound(TypeList)) As String
+			For i = 0 To UBound(TypeList)
+				If TypeList(i).CodeLoc = 0 Then
+					TempList(Mode) = CStr(TypeList(i).FristCodePos)
+					Mode = Mode + 1
+				End If
+			Next i
+			If Mode > 0 Then Mode = Mode - 1
+		End If
+		ReDim Preserve TempList(Mode) As String
+	ElseIf GetOption(5) = "1" Then		'Pascal Unicode 字串类型
+		ReDim TempList(0) As String
+		TempList(0) = "12"
+	ElseIf GetOption(7) = "1" Then		'Pascal Ansi 字串类型
+		ReDim TempList(0) As String
+		TempList(0) = "8"
+	ElseIf GetOption(6) = "1" Then		'Pascal Wide 字串类型
+		ReDim TempList(0) As String
+		TempList(0) = "4"
+	ElseIf GetOption(8) = "1" Then		'Pascal Short 字串类型
+		ReDim TempList(0) As String
+		TempList(0) = "1"
+	ElseIf GetOption(9) = "1" Then		'Android 字串类型
+		ReDim TempList(7) As String
+		For i = 0 To 6
+			TempList(i) = CStr(i + 2)
+		Next i
+	ElseIf GetOption(41) = "1" Then		'.NET 字串类型
+		ReDim TempList(3) As String
+		For i = 0 To 3
+			TempList(i) = CStr(i + 1)
+		Next i
+	End If
+	GetStrTypeLength = TempList
 End Function
 
 
@@ -17877,18 +18105,6 @@ Private Function GetNETVARefList(File As FILE_PROPERTIE,FN As Variant,strData As
 			i = File.SecList(File.MinSecID).lPointerToRawData
 			If RefAdds = "" Then
 				j = File.StreamList(File.USStreamID).lPointerToRawData
-				'With File
-				'	j = .StreamList(.USStreamID).lPointerToRawData
-				'	If .DataDirectory(2).lPointerToRawData > 0 Then
-				'		If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-				'			j = .DataDirectory(2).lPointerToRawData - 1
-				'		Else
-				'			j = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
-				'		End If
-				'	Else
-				'		j = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
-				'	End If
-				'End With
 				RefAdds = ByteToString(GetBytes(FN,j - i + 1,i,Mode),CP_ISOLATIN1)
 			End If
 			TempList = GetVAListRegExp(RefAdds,"\x72" & HexStr2RegExpPattern(.Reference(0).sCode,1),i)
@@ -17965,7 +18181,7 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 	Dim i As Long,j As Long,k As Long,m As Long,n As Long
 	Dim RVA As Long,VRK As Long,MaxPos As Long,RSize As Long,SkipVal As Long
 	Dim Msg As String,TempList() As String,Temp As String
-	'On Error GoTo ExitFunction
+	On Error GoTo ExitFunction
 	If fType > 2 Then GoTo ExitFunction
 	If Moveable = 2 Then
 		GetVARefList = GetNETVARefList(File,FN,strData,strData.StrTypeLength,RefAdds,fType,Mode,ShowMsg)
@@ -17976,6 +18192,9 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 	If fType > -1 Then
 		If .inSectionID < 0 Then .inSectionID = SkipSection(File,.lStartAddress,0,0)
 		If .inSectionID < 0 Then GoTo ExitFunction
+		If File.SecList(.inSectionID).SubSecs > 0 Then
+			If .inSubSecID < 0 Then .inSubSecID = SkipSubSection(File.SecList(.inSectionID),.lStartAddress,0,0)
+		End If
 		If ShowMsg > 0 Then
 			Msg = GetTextBoxString(ShowMsg) & " "
 		ElseIf ShowMsg < 0 Then
@@ -18074,7 +18293,7 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 				If RSize > MaxPos Then RSize = MaxPos
 				SkipVal = i - 1
 				Do While i < RSize
-					i = i + GetVAListNotPE64(FN,strData,n,j,VRK,i,SkipVal,Mode) + 1
+					i = i + GetVAListNotPE64(FN,strData,n,0,VRK,i,SkipVal,Mode) + 1
 					If ShowMsg > 0 Then
 						SetTextBoxString ShowMsg,Msg & Format$(i / MaxPos,"#%")
 					ElseIf ShowMsg < 0 Then
@@ -18106,8 +18325,8 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 					Next i
 				ElseIf UseRefTypeList(0).ByteOrder = 0 Then
 					For i = 0 To .lReferenceNum - 1
-						Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(RVA)), _
-								"{refstartaddress}",CStr(.Reference(i).lAddress))
+						Temp = Replace(Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(RVA)), _
+								"{refstartaddress}",CStr(.Reference(i).lAddress)),"{strtypelength}",CStr(.StrTypeLength))
 						.Reference(i).sCode = ReverseHexCode(Hex$(Eval(Temp)),UseRefTypeList(0).ByteLength * 2)
 						If ShowMsg > 0 Then
 							SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
@@ -18118,8 +18337,8 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 					Next i
 				Else
 					For i = 0 To .lReferenceNum - 1
-						Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(RVA)), _
-								"{refstartaddress}",CStr(.Reference(i).lAddress))
+						Temp = Replace(Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(RVA)), _
+								"{refstartaddress}",CStr(.Reference(i).lAddress)),"{strtypelength}",CStr(.StrTypeLength))
 						.Reference(i).sCode = ValToStr(Eval(Temp),-UseRefTypeList(0).ByteLength * 2,True)
 						If ShowMsg > 0 Then
 							SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
@@ -18144,7 +18363,8 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 				.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress + VRK),8)
 				'.Reference(0).sCode = Byte2Hex(Val2Bytes(.lStartAddress + VRK,4),0,3)
 			Else
-				Temp = Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(.lStartAddress))
+				Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(.lStartAddress)), _
+						"{strtypelength}",CStr(.StrTypeLength))
 				If UseRefTypeList(0).ByteOrder = 0 Then
 					VRK = Val("&H" & ReverseHexCode(.Reference(0).sCode,UseRefTypeList(0).ByteLength * 2)) + fType
 					.Reference(0).sCode = ReverseHexCode(Hex$(Eval(Temp) + VRK),UseRefTypeList(0).ByteLength * 2)
@@ -18161,13 +18381,23 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 		End If
 		If .inSectionID > File.MaxSecIndex - 1 Then GoTo ExitFunction
 		'获取字串的虚拟地址
-		With File.SecList(.inSectionID)
-			If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
-				VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
-			Else
-				GoTo ExitFunction
-			End If
-		End With
+		If File.SecList(.inSectionID).SubSecs > 0 Then
+			With File.SecList(.inSectionID).SubSecList(.inSubSecID)
+				If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
+					VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
+				Else
+					GoTo ExitFunction
+				End If
+			End With
+		Else
+			With File.SecList(.inSectionID)
+				If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
+					VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
+				Else
+					GoTo ExitFunction
+				End If
+			End With
+		End If
 		'获取引用地址及引用代码列表
 		If fType = 0 Then
 			'获取过引用的退出程序
@@ -18175,39 +18405,37 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 			If SkipHeader(File,strData.lStartAddress,0,0) > -1 Then GoTo ExitFunction
 			With File
 				SkipVal = .SecList(.MinSecID).lPointerToRawData
-				If .DataDirectory(2).lPointerToRawData > 0 Then
-					If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-						RSize = .DataDirectory(2).lPointerToRawData - 1
+				If RefAdds = "" Then
+					If .DataDirs > 0 Then
+						If .DataDirectory(2).lPointerToRawData > 0 Then
+							If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
+								RSize = .DataDirectory(2).lPointerToRawData - 1
+							Else
+								RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+							End If
+						Else
+							RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+						End If
 					Else
 						RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
 					End If
-				Else
-					RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+					RefAdds = ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1)
 				End If
 			End With
 			.lReferenceNum = 0
 			ReDim strData.Reference(0) 'As REFERENCE_PROPERTIE
 			If InStr(File.Magic,"NotPE") = 0 Then
 				.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress + VRK),8)
-				If RefAdds = "" Then
-					TempList = GetVAListRegExp(ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1), _
-								HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
-				Else
-					TempList = GetVAListRegExp(RefAdds,HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
-				End If
+				TempList = GetVAListRegExp(RefAdds,HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
 			Else
-				Temp = Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(.lStartAddress))
+				Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(.lStartAddress)), _
+						"{strtypelength}",CStr(.StrTypeLength))
 				If UseRefTypeList(0).ByteOrder = 0 Then
 					.Reference(0).sCode = ReverseHexCode(Hex$(Eval(Temp)),UseRefTypeList(0).ByteLength * 2)
 				Else
 					.Reference(0).sCode = ValToStr(Eval(Temp),-UseRefTypeList(0).ByteLength * 2,True)
 				End If
-				If RefAdds = "" Then
-					TempList = GetVAListRegExp(ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1), _
-								UseRefTypeList(0).PrefixByte & HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
-				Else
-					TempList = GetVAListRegExp(RefAdds,UseRefTypeList(0).PrefixByte & HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
-				End If
+				TempList = GetVAListRegExp(RefAdds,UseRefTypeList(0).PrefixByte & HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
 			End If
 			If CheckArray(TempList) = True Then
 				.lReferenceNum = UBound(TempList) + 1
@@ -18217,9 +18445,9 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 					.Reference(i).lAddress = CLng(TempList(i)) + UseRefTypeList(0).PrefixLength
 					.Reference(i).sCode = .Reference(0).sCode
 					If .Reference(i).lAddress < n Or .Reference(i).lAddress > m Then
-						MaxPos = SkipSection(File,.Reference(i).lAddress,n,m)
+						k = SkipSection(File,.Reference(i).lAddress,n,m)
 					End If
-					.Reference(i).inSecID = MaxPos
+					.Reference(i).inSecID = k
 					If ShowMsg > 0 Then
 						SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
 					ElseIf ShowMsg < 0 Then
@@ -18237,7 +18465,8 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 					.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress + VRK),8)
 					'.Reference(0).sCode = Byte2Hex(Val2Bytes(.lStartAddress + VRK,4),0,3)
 				Else
-					Temp = Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(.lStartAddress))
+					Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(.lStartAddress)), _
+							"{strtypelength}",CStr(.StrTypeLength))
 					If UseRefTypeList(0).ByteOrder = 0 Then
 						.Reference(0).sCode = ReverseHexCode(Hex$(Eval(Temp)),UseRefTypeList(0).ByteLength * 2)
 					Else
@@ -18291,7 +18520,7 @@ End Function
 'fType > 4 初始化，清空翻译引用列表和引用代码
 '虚拟地址(VA) = StartPos + ImageBase + VRK
 Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList() As STRING_PROPERTIE,TypeList() As STRING_TYPE,IDList() As Long, _
-	RefAddList() As String,ByVal fType As Long,ByVal Mode As Long,Optional ByVal ShowMsg As Long,Optional ByVal StopAble As Boolean) As Long
+	RefAddList() As String,ByVal fType As Long,ByVal Mode As Long,Optional ByVal ShowMsg As Long,Optional ByVal Stopable As Boolean) As Long
 	Dim i As Long,j As Long,k As Long,m As Long,n As Long
 	Dim RVA As Long,VRK As Long,MaxPos As Long,RSize As Long,SkipVal As Long
 	Dim Max As Long,MinVal As Long,MaxVal As Long
@@ -18317,9 +18546,13 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 		With File
 			If InStr(.Magic,"32") Then
 				MinVal = .SecList(.MinSecID).lPointerToRawData
-				If .DataDirectory(2).lPointerToRawData > 0 Then
-					If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-						RSize = .DataDirectory(2).lPointerToRawData - 1
+				If .DataDirs > 0 Then
+					If .DataDirectory(2).lPointerToRawData > 0 Then
+						If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
+							RSize = .DataDirectory(2).lPointerToRawData - 1
+						Else
+							RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+						End If
 					Else
 						RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
 					End If
@@ -18362,7 +18595,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 			Next i
 			Msg.Passed = i
 		Else
-			If StopAble = True Then
+			If Stopable = True Then
 				'显示主窗口的取消操作按钮和禁止主窗口的 Esc 键响应退出主窗口
 				Call ShowButton(StopHwnd,VK_ESCAPE,True)
 			End If
@@ -18415,7 +18648,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 						End If
 					End With
 					'DoEvents '转让控制权，允许操作系统处理其他事件
-					If StopAble = True Then
+					If Stopable = True Then
 						If StopProcess(StopHwnd,VK_ESCAPE) = True Then
 							GetVARefListBatch = -2
 							GoTo ExitFunction
@@ -18453,7 +18686,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 								pDic.RemoveAll
 								Do While i < RSize - MinVal + 1
 									m = GetVAListPE64Batch(FN,DataListBak,intList,RefMaxList,pDic,aDic, _
-										i,Temp,VRK,j,MinList(k),RSize,MinVal,Mode,StopAble)
+										i,Temp,VRK,j,MinList(k),RSize,MinVal,Mode,Stopable)
 									If m < -1 Then
 										GetVARefListBatch = -2
 										Exit Function
@@ -18469,7 +18702,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 										End If
 									End If
 									'DoEvents '转让控制权，允许操作系统处理其他事件
-									If StopAble = True Then
+									If Stopable = True Then
 										If StopProcess(StopHwnd,VK_ESCAPE) = True Then
 											GetVARefListBatch = -2
 											GoTo ExitFunction
@@ -18502,7 +18735,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 							End If
 						End With
 						'DoEvents '转让控制权，允许操作系统处理其他事件
-						If StopAble = True Then
+						If Stopable = True Then
 							If StopProcess(StopHwnd,VK_ESCAPE) = True Then
 								GetVARefListBatch = -2
 								GoTo ExitFunction
@@ -18542,7 +18775,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 						PSL.Output Msg.Massage & Format$(i / Msg.Total,"#%")
 					End If
 					'DoEvents '转让控制权，允许操作系统处理其他事件
-					If StopAble = True Then
+					If Stopable = True Then
 						If StopProcess(StopHwnd,VK_ESCAPE) = True Then
 							GetVARefListBatch = -2
 							GoTo ExitFunction
@@ -18551,7 +18784,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 				Next i
 				Msg.Passed = i
 			End Select
-			If StopAble = True Then
+			If Stopable = True Then
 				'隐藏主窗口中的取消操作按钮，启用 Esc 键的退出响应
 				Call ShowButton(StopHwnd,VK_ESCAPE,False)
 			End If
@@ -18607,7 +18840,7 @@ Private Function GetVARefListBatch(File As FILE_PROPERTIE,FN As Variant,DataList
 	ExitFunction:
 	Erase aDicList
 	Set Dic = Nothing: Set pDic = Nothing: Set aDic = Nothing
-	If StopAble = True Then
+	If Stopable = True Then
 		'隐藏主窗口中的取消操作按钮，启用 Esc 键的退出响应
 		Call ShowButton(StopHwnd,VK_ESCAPE,False)
 	End If
@@ -18625,6 +18858,7 @@ Private Function GetVAListNotPE64(FN As Variant,strData As STRING_SUB_PROPERTIE,
 		i = (VRK - StartPos) And 65535	'后2个字节查找，速度较快，这里的 65535 不能替换成 &HFFFF，因为 &HFFFF 返回为 -1
 		If i > RSize - StartPos Then i = RSize - StartPos
 		If i > .lStartAddress - StartPos Then i = .lStartAddress - StartPos
+		RSize = UseRefTypeList(0).PrefixLength
 		If i > 0 Then
 			GetVAListNotPE64 = i
 			'正则表达式查找，速度较快，后3个字节查找时，开始地址为 StartPos + 1，否则为 StartPos + 2
@@ -18636,15 +18870,16 @@ Private Function GetVAListNotPE64(FN As Variant,strData As STRING_SUB_PROPERTIE,
 				Temp = HexStr2RegExpPattern(Left$(ValToStr(VRK - StartPos,-UseRefTypeList(0).ByteLength * 2,True),UseRefTypeList(0).ByteLength),1)
 				Temp = UseRefTypeList(0).PrefixByte & Temp
 			End If
-			TempList = GetVAListRegExp(ByteToString(GetBytes(FN,i + 4,StartPos - 3,Mode),CP_ISOLATIN1),Temp,StartPos - 3)
+			TempList = GetVAListRegExp(ByteToString(GetBytes(FN,i + 4,StartPos - RSize,Mode),CP_ISOLATIN1),Temp,StartPos - RSize)
 			'字节数组查找，速度较慢，后3个字节查找时，开始地址为 StartPos + 1，否则为 StartPos + 2
 			'TempList = GetVAList(FN.ImageByte,Val2BytesRev(VRK - StartPos,4,2),StartPos + 2,StartPos + 2 + GetVAListPE64)
 			If CheckArray(TempList) = False Then Exit Function
 			For i = 0 To UBound(TempList)
-				StartPos = CLng(TempList(i)) + UseRefTypeList(0).PrefixLength
+				StartPos = CLng(TempList(i)) + RSize
 				If VRK > StartPos Then
 					'获取虚拟地址(即引用代码值)，并判断其是否正确
-					Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(VRK)),"{refstartaddress}",CStr(StartPos))
+					Temp = Replace(Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(VRK)), _
+							"{refstartaddress}",CStr(StartPos)),"{strtypelength}",CStr(.StrTypeLength))
 					Bytes = Val2Bytes(Eval(Temp),UseRefTypeList(0).ByteLength,-UseRefTypeList(0).ByteOrder)
 					If Bytes = GetBytes(FN,UseRefTypeList(0).ByteLength,StartPos,Mode) Then
 						If .lReferenceNum > RefMaxNum Then
@@ -18661,7 +18896,12 @@ Private Function GetVAListNotPE64(FN As Variant,strData As STRING_SUB_PROPERTIE,
 			Next i
 		ElseIf VRK > StartPos Then
 			'获取虚拟地址(即引用代码值)，并判断其是否正确
-			Temp = Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(VRK)),"{refstartaddress}",CStr(StartPos))
+			If UseRefTypeList(0).PrefixByte <> "" Then
+				TempList = GetVAListRegExp(ByteToString(GetBytes(FN,5,StartPos - RSize,Mode),CP_ISOLATIN1),UseRefTypeList(0).PrefixByte,StartPos - RSize)
+				If CheckArray(TempList) = False Then Exit Function
+			End If
+			Temp = Replace(Replace(Replace(UseRefTypeList(0).Algorithm,"{strstartaddress}",CStr(VRK)), _
+					"{refstartaddress}",CStr(StartPos)),"{strtypelength}",CStr(.StrTypeLength))
 			Bytes = Val2Bytes(Eval(Temp),UseRefTypeList(0).ByteLength,-UseRefTypeList(0).ByteOrder)
 			If Bytes = GetBytes(FN,UseRefTypeList(0).ByteLength,StartPos,Mode) Then
 				GetVAListNotPE64 = 3
@@ -19463,7 +19703,7 @@ End Sub
 'Mode = 1 '引用代码列表转字符串数组
 'Mode = 2 '跟随引用地址的字串类型列表转字符串数组
 'Mode > 2 '引用所在区段 ID 转字符串数组
-Private Function RefList2StrList(strData As STRING_SUB_PROPERTIE,ByVal Mode As Integer) As String()
+Private Function RefList2StrList(strData As STRING_SUB_PROPERTIE,ByVal Mode As Integer,Optional ByVal MoveVal As Integer) As String()
 	Dim i As Long
 	With strData
 		If .lReferenceNum = 0 Then
@@ -19473,7 +19713,7 @@ Private Function RefList2StrList(strData As STRING_SUB_PROPERTIE,ByVal Mode As I
 			Select Case Mode
 			Case 0
 				For i = 0 To .lReferenceNum - 1
-					TempList(i) = CStr(.Reference(i).lAddress)
+					TempList(i) = CStr(.Reference(i).lAddress + MoveVal)
 				Next i
 			Case 1
 				For i = 0 To .lReferenceNum - 1
@@ -19806,6 +20046,7 @@ Private Function FilterSet(ByVal Mode As Long,ByVal fType As Long) As Boolean
 	Dim MsgList() As String
 	If getMsgList(UIDataList,MsgList,"FilterSet",1) = False Then Exit Function
 	Begin Dialog UserDialog 860,574,MsgList(0),.FilterSetDlgFunc ' %GRID:10,7,1,1
+		TextBox 0,0,0,21,.SuppValueBox
 		GroupBox 10,0,840,532,"",.GroupBox
 		Text 30,14,130,14,MsgList(1),.ItemText
 		Text 670,14,70,14,MsgList(2),.IgnoreItemText,2
@@ -20008,11 +20249,12 @@ Private Function FilterSet(ByVal Mode As Long,ByVal fType As Long) As Boolean
 			OptionButton 750,497,50,21,"",.CustomButton2
 			OptionButton 800,497,40,21,"",.CustomButton3
 
-		PushButton 10,546,90,21,MsgList(34),.ReverseButton
-		PushButton 120,546,90,21,MsgList(35),.ReposButton
-		PushButton 230,546,90,21,MsgList(36),.ResetButton
-		CheckBox 400,546,80,21,"",.ModeCheckBox
-		CheckBox 400,546,80,21,"",.TypeCheckBox
+		PushButton 10,546,90,21,MsgList(54),.HelpButton
+		PushButton 120,546,90,21,MsgList(34),.ReverseButton
+		PushButton 230,546,90,21,MsgList(35),.ReposButton
+		PushButton 340,546,90,21,MsgList(36),.ResetButton
+		CheckBox 490,546,80,21,"",.ModeCheckBox
+		CheckBox 480,546,80,21,"",.TypeCheckBox
 		OKButton 650,546,90,21,.OKButton
 		CancelButton 760,546,90,21,.CancelButton
 	End Dialog
@@ -20031,6 +20273,8 @@ Private Function FilterSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 	Select Case Action%
 	Case 1 ' 对话框窗口初始化
 		If getMsgList(UIDataList,MsgList,"FilterSet",1) = False Then Exit Function
+		DlgText "SuppValueBox",CStr$(SuppValue)
+		DlgVisible "SuppValueBox",False
 		DlgVisible "ModeCheckBox",False
 		DlgVisible "TypeCheckBox",False
 		DlgVisible "CustomBoxBak",False
@@ -20398,6 +20642,15 @@ Private Function FilterSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End If
 			FilterSetDlgFunc = False
 			Exit Function
+		Case "HelpButton"
+			If StrToLong(Selected(30)) = 1 Then
+				If DlgValue("TypeCheckBox") = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1009,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				Else
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1010,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
+			End If
+			Call Help("FilterSetHelp")
 		Case "FilterStrButton"
 			If EditFilter(ExtractSet,0) = True Then
 				ExtractSetBak(34) = ExtractSet(34)
@@ -20669,6 +20922,9 @@ Private Function FilterSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -20821,11 +21077,24 @@ Private Function FilterSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			End Select
 		End If
 	Case 6 ' 函数快捷键
-		If SuppValue = 2 Then
+		Select Case SuppValue
+		Case 1
+			If StrToLong(Selected(30)) = 1 Then
+				If DlgValue("TypeCheckBox") = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1009,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				Else
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1010,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
+			End If
+			Call Help("FilterSetHelp")
+		Case 2
 			If getMsgList(UIDataList,MsgList,"RegExpRuleTip",1) = False Then Exit Function
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -20836,7 +21105,7 @@ Private Function FilterSetDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				DlgText "CustomBox",InsertStr(GetFocus(),DlgText("CustomBox"), _
 						Mid$(MsgList(i),InStrRev(MsgList(i),vbTab) + 1))
 			End If
-		End If
+		End Select
 	End Select
 End Function
 
@@ -20847,6 +21116,7 @@ Public Function EditFavority(FavorityList() As String,ByVal Mode As Long) As Boo
 	If getMsgList(UIDataList,MsgList,"EditFavority",1) = False Then Exit Function
 	AllStrList = FavorityList: UseStrList = FavorityList
 	Begin Dialog UserDialog 560,259,MsgList(0),.EditFavorityDlgFunc ' %GRID:10,7,1,1
+		TextBox 0,0,30,21,.SuppValueBox
 		TextBox 0,0,30,21,.ModeTextBox
 		TextBox 0,0,30,21,.CheckTextBox
 		Text 20,4,400,14,MsgList(1),.ItemText
@@ -20881,8 +21151,10 @@ Private Function EditFavorityDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 	Dim i As Long,j As Long,Temp As String,MsgList() As String
 	Select Case Action%
 	Case 1 ' 对话框窗口初始化
+		DlgText "SuppValueBox",CStr$(SuppValue)
 		DlgVisible "ModeTextBox",False
 		DlgVisible "CheckTextBox",False
+		DlgVisible "SuppValueBox",False
 		If StrToLong(DlgText("ModeTextBox")) < 2 Then DlgEnable "RegExpTipButton",False
 		If getMsgList(UIDataList,MsgList,"EditFavority",1) = False Then Exit Function
 		If UBound(UseStrList) = 0 Then
@@ -21042,6 +21314,9 @@ Private Function EditFavorityDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -21173,9 +21448,13 @@ Public Function EditFilter(OptionSet() As String,Optional ByVal Mode As Long) As
 		PushButton 380,7,90,21,MsgList(2),.AddFileButton
 		PushButton 470,7,90,21,MsgList(3),.ChangeFileButton
 		PushButton 560,7,90,21,MsgList(4),.DelFileButton
+		PushButton 610,35,30,21,MsgList(5),.FileLocPushButton
+		TextBox 30,35,580,21,.FileLocTextBox
+		TextBox 30,35,580,21,.FileLocTextBoxBak
 		OptionGroup .FileLocOption
-			OptionButton 30,35,620,14,MsgList(5),.UseMacroLocFileBox
-			OptionButton 30,49,620,14,MsgList(6),.UsePrjLocFileBox
+			OptionButton 30,63,620,14,"",.UseMacroLocFileBox
+			OptionButton 30,63,620,14,"",.UsePrjLocFileBox
+			OptionButton 30,63,620,14,"",.CustomLocFileBox
 		CheckBox 30,63,620,14,MsgList(7),.AutoSelectBox
 		Text 10,87,140,14,MsgList(8),.Text
 		DropListBox 160,84,330,21,MsgList(),.FindTextBox,1
@@ -21191,18 +21470,18 @@ Public Function EditFilter(OptionSet() As String,Optional ByVal Mode As Long) As
 		PushButton 530,217,120,21,MsgList(16),.AllSelectButton
 		PushButton 530,245,120,21,MsgList(17),.CleanButton
 		PushButton 530,266,120,21,MsgList(18),.ResetButton
-		PushButton 530,294,120,21,MsgList(19),.DefaultButton
-		PushButton 530,315,120,21,MsgList(20),.ReadFileButton
-		PushButton 530,343,120,21,MsgList(21),.ImportButton
-		PushButton 530,364,120,21,MsgList(22),.ExportButton
+		PushButton 530,287,120,21,MsgList(19),.DefaultButton
+		PushButton 530,308,120,21,MsgList(20),.ReadFileButton
+		PushButton 530,336,120,21,MsgList(21),.ImportButton
+		PushButton 530,357,120,21,MsgList(22),.ExportButton
 		Text 530,462,120,14,MsgList(23),.OptionText
 		CheckBox 530,479,120,14,MsgList(24),.MatchCaseBox
-		CheckBox 530,496,120,14,MsgList(25),.IgnoreCheckBox
+		CheckBox 530,497,120,14,MsgList(25),.IgnoreCheckBox
 		Text 530,515,120,14,MsgList(26),.IndexNumText
 		Text 530,532,120,14,MsgList(27),.TotalNumText
-		PushButton 530,434,120,21,MsgList(30),.HelpButton
-		OKButton 530,392,120,21,.OKButton
-		CancelButton 530,413,120,21,.CancelButton
+		PushButton 530,427,120,21,MsgList(30),.HelpButton
+		OKButton 530,385,120,21,.OKButton
+		CancelButton 530,406,120,21,.CancelButton
 	End Dialog
 	Dim dlg As UserDialog
 	dlg.ModeCheckBox = Mode
@@ -21213,6 +21492,19 @@ Public Function EditFilter(OptionSet() As String,Optional ByVal Mode As Long) As
 		dlg.AutoSelectBox = StrToLong(OptionSet(36))
 		dlg.FileLocOption = StrToLong(OptionSet(40))
 	End If
+	Select Case dlg.FileLocOption
+	Case 0
+		dlg.FileLocTextBox = MacroLoc & "\Data"
+	Case 1
+		dlg.FileLocTextBox = PSL.ActiveProject.Location
+	Case Else
+		If Mode = 0 Then
+			dlg.FileLocTextBox = Left$(ExtractSet(35),InStrRev(ExtractSet(35),"\") - 1)
+		Else
+			dlg.FileLocTextBox = Left$(ExtractSet(37),InStrRev(ExtractSet(37),"\") - 1)
+		End If
+		dlg.FileLocTextBoxBak = dlg.FileLocTextBox
+	End Select
 	If Dialog(dlg) <> 0 Then
 		If Mode = 0 Then
 			If OptionSet(34) <> CStr(dlg.AutoSelectBox) Then
@@ -21254,7 +21546,11 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		DlgVisible "ModeCheckBox",False
 		DlgVisible "TempButton",False
 		DlgVisible "SuppValueBox",False
+		DlgVisible "FileLocOption",False
+		DlgVisible "FileLocTextBoxBak",False
 		DlgEnable "AllShowButton",False
+		DlgEnable "FileLocOption",False
+		DlgEnable "FileLocTextBox",False
 		GetHistory(TempList,"FindStrings","EditFilterDlg")
 		DlgListBoxArray "FindTextBox",TempList()
 		DlgText "FindTextBox",TempList(0)
@@ -21273,13 +21569,17 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		If DlgValue("ModeCheckBox") = 0 Then
 			DlgEnable "DefaultButton",False
 			ExtractSet(38) = ExtractSet(35)
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				TempList = GetFiles(FileList,MacroLoc & "\Data\",FilterFile,"*.sfl",True)
 				Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".sfl"
-			Else
+			Case 1
 				TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.sfl")
 				Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl"
-			End If
+			Case Else
+				TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.sfl")
+				Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".sfl"
+			End Select
 			If Dir$(Temp) = "" Then
 				If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 				ReDim Preserve TempList(j) As String,FileList(j) As FILE_LIST
@@ -21298,13 +21598,17 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			StrList2StrDic(FilterStrDic,AllStrList,0,2)
 		Else
 			ExtractSet(38) = ExtractSet(37)
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				TempList = GetFiles(FileList,MacroLoc & "\Data\",ReserveFile,"*.srl",True)
 				Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".srl"
-			Else
+			Case 1
 				TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.srl")
 				Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl"
-			End If
+			Case Else
+				TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.srl")
+				Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".srl"
+			End Select
 			If Dir$(Temp) = "" Then
 				If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 				ReDim Preserve TempList(j) As String,FileList(j) As FILE_LIST
@@ -21363,6 +21667,9 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		EditFilterDlgFunc = True ' 防止按下按钮时关闭对话框窗口
 		Select Case DlgItem$
 		Case "HelpButton"
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1015,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("FilterReserveHelp")
 			Exit Function
 		Case "OKButton"
@@ -21375,17 +21682,23 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If DlgValue("AutoSelectBox") = 0 Then Exit Function
 			'自动选择时检查当前的文件是否和自动选择的一致
 			If DlgValue("ModeCheckBox") = 0 Then
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					ExtractSet(38) = MacroLoc & "\Data\" & SourceFile.FileName & ".sfl"
-				Else
+				Case 1
 					ExtractSet(38) = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl"
-				End If
+				Case Else
+					ExtractSet(38) = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".sfl"
+				End Select
 			Else
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					ExtractSet(38) = MacroLoc & "\Data\" & SourceFile.FileName & ".srl"
-				Else
+				Case 1
 					ExtractSet(38) = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl"
-				End	If
+				Case Else
+					ExtractSet(38) = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".srl"
+				End	Select
 			End If
 			Erase AllStrList,UseStrList,UseStrListBak
 			Exit Function
@@ -21394,6 +21707,9 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -21436,11 +21752,14 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Erase AllStrList,UseStrList,UseStrListBak
 			Exit Function
 		Case "FileList"
-			If DlgValue("ModeCheckBox") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				Temp = MacroLoc & "\Data\" & DlgText("FileList")
-			Else
+			Case 1
 				Temp = PSL.ActiveProject.Location & "\" & DlgText("FileList")
-			End If
+			Case Else
+				Temp = DlgText("FileLocTextBox") & "\" & DlgText("FileList")
+			End Select
 			If Temp = ExtractSet(38) Then Exit Function
 			'检查数据是否已经改变，已改变时先保存当前的文件
 			If ArrayComp(AllStrList,UseStrListBak) = True Then
@@ -21477,18 +21796,59 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				DlgEnable "DelFileButton",True
 			End If
 			DlgItem$ = "UseStrList"
-		Case "AutoSelectBox", "FileLocOption"
-			If DlgItem$ = "AutoSelectBox" Then
+		Case "AutoSelectBox", "FileLocOption", "FileLocPushButton"
+			Select Case DlgItem$
+			Case "AutoSelectBox"
 				If DlgValue("AutoSelectBox") = 0 Then Exit Function
-			End If
+			Case "FileLocPushButton"
+				ReDim TempList(3) As String
+				TempList(0) = MsgList(6)
+				TempList(1) = MsgList(28)
+				If DlgText("FileLocTextBoxBak") = "" Then
+					TempList(3) = MsgList(29)
+				ElseIf Dir$(DlgText("FileLocTextBoxBak"),vbDirectory) = "" Then
+					TempList(3) = MsgList(29)
+				ElseIf DlgText("FileLocTextBoxBak") = MacroLoc & "\Data" Then
+					TempList(3) = MsgList(29)
+				ElseIf DlgText("FileLocTextBoxBak") = PSL.ActiveProject.Location Then
+					TempList(3) = MsgList(29)
+				Else
+					TempList(2) = DlgText("FileLocTextBoxBak")
+					TempList(3) = MsgList(29)
+				End If
+				i = ShowPopupMenu(TempList,vbPopupUseRightButton)
+				If i < 0 Then Exit Function
+				Select Case i
+				Case 0
+					If DlgText("FileLocTextBox") = MacroLoc & "\Data" Then Exit Function
+					DlgText "FileLocTextBox",MacroLoc & "\Data"
+				Case 1
+					If DlgText("FileLocTextBox") = PSL.ActiveProject.Location Then Exit Function
+					DlgText "FileLocTextBox",PSL.ActiveProject.Location
+				Case 2
+					If DlgText("FileLocTextBox") = DlgText("FileLocTextBoxBak") Then Exit Function
+					DlgText "FileLocTextBox",DlgText("FileLocTextBoxBak")
+				Case Else
+					If BrowseForFolder(Temp,MsgList(62)) = False Then Exit Function
+					If DlgText("FileLocTextBox") = Temp Then Exit Function
+					DlgText "FileLocTextBox",Temp
+					DlgText "FileLocTextBoxBak",Temp
+					i = 2
+				End Select
+				DlgValue "FileLocOption",i
+			End Select
 			If DlgValue("ModeCheckBox") = 0 Then
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",FilterFile,"*.sfl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.sfl")
-				End If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".sfl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.sfl")
+				End Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String,FileList(j) As FILE_LIST
@@ -21496,13 +21856,17 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 					FileList(j).FilePath = Temp
 				End If
 			Else
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",ReserveFile,"*.srl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.srl")
-				End	If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".srl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.srl")
+				End	Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String,FileList(j) As FILE_LIST
@@ -21573,13 +21937,17 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				End Select
 			End If
 			If DlgValue("ModeCheckBox") = 0 Then
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",FilterFile,"*.sfl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.sfl")
-				End If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".sfl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.sfl")
+				End Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String
@@ -21587,13 +21955,17 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				End If
 				Temp = SourceFile.FileName & ".sfl"
 			Else
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",ReserveFile,"*.srl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.srl")
-				End	If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".srl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.srl")
+				End	Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String
@@ -21622,11 +21994,14 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Else
 				ReserveStrDic.RemoveAll
 			End If
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				ExtractSet(38) = MacroLoc & "\Data\" & Temp
-			Else
+			Case 1
 				ExtractSet(38) = PSL.ActiveProject.Location & "\" & Temp
-			End If
+			Case Else
+				ExtractSet(38) = DlgText("FileLocTextBox") & "\" & Temp
+			End Select
 			ReDim AllStrList(0) As String
 			UseStrList = AllStrList: UseStrListBak = UseStrList
 			DlgListBoxArray "UseStrList",UseStrList()
@@ -21640,38 +22015,52 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		Case "ChangeFileButton"
 			i = DlgValue("FileList")
 			If i < 0 Then Exit Function
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				If Dir$(MacroLoc & "\Data\" & DlgText("FileList")) = "" Then
 					MsgBox Replace$(MsgList(53),"%s",MacroLoc & "\Data\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
 					Exit Function
 				End If
-			Else
+			Case 1
 				If Dir$(PSL.ActiveProject.Location & "\" & DlgText("FileList")) = "" Then
-					MsgBox Replace$(MsgList(53),"%s",MacroLoc & "\Data\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
+					MsgBox Replace$(MsgList(53),"%s",PSL.ActiveProject.Location & "\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
 					Exit Function
 				End If
-			End If
+			Case Else
+				If Dir$(DlgText("FileLocTextBox") & "\" & DlgText("FileList")) = "" Then
+					MsgBox Replace$(MsgList(53),"%s",DlgText("FileLocTextBox") & "\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
+					Exit Function
+				End If
+			End Select
 			If DlgValue("ModeCheckBox") = 0 Then
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",FilterFile,"*.sfl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.sfl")
-				End If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".sfl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.sfl")
+				End Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String
 					TempList(j) = SourceFile.FileName & ".sfl"
 				End If
 			Else
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",ReserveFile,"*.srl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.srl")
-				End	If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".srl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.srl")
+				End	Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String
@@ -21686,53 +22075,72 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Loop
 			If Dir$(FileList(i).FilePath) <> "" Then Name FileList(i).FilePath As ExtractSet(38)
 			TempList(i) = Temp
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				ExtractSet(38) = MacroLoc & "\Data\" & Temp
-			Else
+			Case 1
 				ExtractSet(38) = PSL.ActiveProject.Location & "\" & Temp
-			End If
+			Case Else
+				ExtractSet(38) = DlgText("FileLocTextBox") & "\" & Temp
+			End Select
 			DlgListBoxArray "FileList",TempList()
 			DlgValue "FileList",i
 			Exit Function
 		Case "DelFileButton"
 			i = DlgValue("FileList")
 			If i < 0 Then Exit Function
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				If Dir$(MacroLoc & "\Data\" & DlgText("FileList")) = "" Then
 					MsgBox Replace$(MsgList(54),"%s",MacroLoc & "\Data\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
 					Exit Function
 				End If
 				If MsgBox(MsgList(55),vbYesNo+vbInformation,MsgList(32)) = vbNo Then Exit Function
 				Kill MacroLoc & "\Data\" & DlgText("FileList")
-			Else
+			Case 1
 				If Dir$(PSL.ActiveProject.Location & "\" & DlgText("FileList")) = "" Then
 					MsgBox Replace$(MsgList(54),"%s",PSL.ActiveProject.Location & "\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
 					Exit Function
 				End If
 				If MsgBox(MsgList(55),vbYesNo+vbInformation,MsgList(32)) = vbNo Then Exit Function
 				Kill PSL.ActiveProject.Location & "\" & DlgText("FileList")
-			End If
+			Case Else
+				If Dir$(DlgText("FileLocTextBox") & "\" & DlgText("FileList")) = "" Then
+					MsgBox Replace$(MsgList(54),"%s",DlgText("FileLocTextBox") & "\" & DlgText("FileList")),vbOkOnly+vbInformation,MsgList(31)
+					Exit Function
+				End If
+				If MsgBox(MsgList(55),vbYesNo+vbInformation,MsgList(32)) = vbNo Then Exit Function
+				Kill DlgText("FileLocTextBox") & "\" & DlgText("FileList")
+			End Select
 			If DlgValue("ModeCheckBox") = 0 Then
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",FilterFile,"*.sfl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.sfl")
-				End If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".sfl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.sfl")
+				End Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String
 					TempList(j) = SourceFile.FileName & ".sfl"
 				End If
 			Else
-				If DlgValue("FileLocOption") = 0 Then
+				Select Case DlgValue("FileLocOption")
+				Case 0
 					Temp = MacroLoc & "\Data\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",ReserveFile,"*.srl",True)
-				Else
+				Case 1
 					Temp = PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\","","*.srl")
-				End	If
+				Case Else
+					Temp = DlgText("FileLocTextBox") & "\" & SourceFile.FileName & ".srl"
+					TempList = GetFiles(FileList,DlgText("FileLocTextBox") & "\","","*.srl")
+				End	Select
 				If Dir$(Temp) = "" Then
 					If CheckArray(TempList) = False Then j = 0 Else j = UBound(TempList) + 1
 					ReDim Preserve TempList(j) As String
@@ -21742,11 +22150,14 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			DlgListBoxArray "FileList",TempList()
 			j = UBound(TempList)
 			DlgValue "FileList",IIf(i > j,j,i)
-			If DlgValue("FileLocOption") = 0 Then
+			Select Case DlgValue("FileLocOption")
+			Case 0
 				ExtractSet(38) = MacroLoc & "\Data\" & DlgText("FileList")
-			Else
+			Case 1
 				ExtractSet(38) = PSL.ActiveProject.Location & "\" & DlgText("FileList")
-			End If
+			Case Else
+				ExtractSet(38) = DlgText("FileLocTextBox") & "\" & DlgText("FileList")
+			End Select
 			If DlgValue("ModeCheckBox") = 0 Then
 				AllStrList = ReSplit(ReadBinaryFile(ExtractSet(38),CP_UNICODELITTLE,True),vbNullChar)
 				StrList2StrDic(FilterStrDic,AllStrList,0,2)
@@ -22235,6 +22646,9 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 	Case 6 ' 函数快捷键
 		Select Case SuppValue
 		Case 1	'帮助
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1015,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("FilterReserveHelp")
 			Exit Function
 		Case 2	'弹出正则表达式专用字符选择菜单
@@ -22242,6 +22656,9 @@ Private Function EditFilterDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -23774,6 +24191,7 @@ Private Function GetString(File As FILE_PROPERTIE,FN As FILE_IMAGE,strData As ST
 			Data.lHexLength = .lHexLength
 			Data.CodePage = .CodePage
 			Data.inSectionID = .inSectionID
+			Data.inSubSecID = .inSubSecID
 		End With
 	ElseIf fType = 1 Then
 		With strData.Source
@@ -23795,6 +24213,10 @@ Private Function GetString(File As FILE_PROPERTIE,FN As FILE_IMAGE,strData As ST
 		Else
 			RSize = File.SecList(.inSectionID).lPointerToRawData + File.SecList(.inSectionID).lSizeOfRawData - 1
 		End If
+		'If File.SecList(.inSectionID).SubSecs > 0 Then
+		'	.inSubSecID = SkipSubSection(File.SecList(.inSectionID),.lStartAddress,0,RSize)
+		'	If .inSubSecID < 0 Then Exit Function
+		'End If
 
 		'跳过文件数据目录所在区域
 		If fType < -1 Then
@@ -23815,8 +24237,13 @@ Private Function GetString(File As FILE_PROPERTIE,FN As FILE_IMAGE,strData As ST
 			i = File.StreamList(File.USStreamID).lPointerToRawData
 			j = i + File.StreamList(File.USStreamID).lSizeOfRawData - 1
 			If .lStartAddress >= i And .lStartAddress <= j Then
-				If OptionSet(9) = "0" Then GoTo ExitFunction
-				'If Mid$(OptionSet(4),2,1) = "0" Then GoTo ExitFunction
+				If OptionSet(9) = "0" Then
+					.lEndAddress = j
+					GoTo ExitFunction
+				'ElseIf Mid$(OptionSet(4),2,1) = "0" Then
+				'	.lEndAddress = j
+				'	GoTo ExitFunction
+				End If
 				Do
 					.lStartAddress = .lStartAddress - 1
 					If .lStartAddress < i Then Exit Do
@@ -24062,7 +24489,7 @@ End Function
 'MoveVal = 第二次时使用的第一次写入引起的地址差额，注意：不是隐蔽区段的差额
 Private Function WritePEString(trnFile As FILE_PROPERTIE,FN1 As FILE_IMAGE,FN2 As FILE_IMAGE,strData() As STRING_PROPERTIE, _
 		ByVal ID As Long,textStr As String,ByVal fType As Long,ByVal Mode As Long,Optional ByVal MoveVal As Long) As Integer
-	Dim i As Long,trnStartPos As Long,trnLength As Long,trnMaxLength As Long
+	Dim i As Long,trnStartPos As Long,trnLength As Long,trnMaxLength As Long,EndCharLength As Long
 	Dim TempByte() As Byte,Temp As String,intList(3) As Integer
 
 	On Error GoTo localError
@@ -24195,19 +24622,19 @@ Private Function WritePEString(trnFile As FILE_PROPERTIE,FN1 As FILE_IMAGE,FN2 A
 			If trnMaxLength > 0 Then
 				ReDim TempByte(trnMaxLength - 1) As Byte
 				If .Source.iNullByteLength > 0 Then
-					MoveVal = .Source.lMaxAddress - .Source.lEndAddress - .EndByteLength
-					If MoveVal >= trnMaxLength Then
-						CopyMemory TempByte(0), GetBytes(FN1,MoveVal,.Source.lEndAddress + .EndByteLength + 1,Mode)(0),trnMaxLength
-					ElseIf MoveVal > 0 Then
+					EndCharLength = .Source.lMaxAddress - .Source.lEndAddress - .EndByteLength
+					If EndCharLength >= trnMaxLength Then
+						CopyMemory TempByte(0), GetBytes(FN1,EndCharLength,.Source.lEndAddress + .EndByteLength + 1 + MoveVal,Mode)(0),trnMaxLength
+					ElseIf EndCharLength > 0 Then
 						ReDim srcByte(0) As Byte
-						srcByte = GetBytes(FN1,MoveVal,.Source.lEndAddress + .EndByteLength + 1,Mode)
-						trnStartPos = trnMaxLength \ MoveVal
+						srcByte = GetBytes(FN1,EndCharLength,.Source.lEndAddress + .EndByteLength + 1 + MoveVal,Mode)
+						trnStartPos = trnMaxLength \ EndCharLength
 						For i = 0 To trnStartPos - 1
-							CopyMemory TempByte(MoveVal * i), srcByte(0),MoveVal
+							CopyMemory TempByte(EndCharLength * i), srcByte(0), EndCharLength
 						Next i
-						i = (trnMaxLength Mod MoveVal)
+						i = (trnMaxLength Mod EndCharLength)
 						If i > 0 Then
-							CopyMemory TempByte(MoveVal * trnStartPos), srcByte(0),i
+							CopyMemory TempByte(EndCharLength * trnStartPos), srcByte(0), i
 						End If
 					End If
 				End If
@@ -24243,7 +24670,7 @@ End Function
 'MoveVal = 第二次时使用的第一次写入引起的地址差额，注意：不是隐蔽区段的差额
 Private Function WriteNotPEString(trnFile As FILE_PROPERTIE,FN1 As FILE_IMAGE,FN2 As FILE_IMAGE,strData() As STRING_PROPERTIE, _
 		ByVal ID As Long,PreID As Long,ByVal fType As Long,ByVal Mode As Long,Optional ByVal MoveVal As Long) As Integer
-	Dim i As Long,trnStartPos As Long,trnMaxLength As Long
+	Dim i As Long,trnStartPos As Long,trnMaxLength As Long,EndCharLength As Long
 	Dim TempByte() As Byte,Temp As String,intList(3) As Integer
 
 	On Error GoTo localError
@@ -24379,19 +24806,19 @@ Private Function WriteNotPEString(trnFile As FILE_PROPERTIE,FN1 As FILE_IMAGE,FN
 		If trnMaxLength > 0 Then
 			ReDim TempByte(trnMaxLength - 1) As Byte
 			If .Source.iNullByteLength > 0 Then
-				MoveVal = .Source.lMaxAddress - .Source.lEndAddress - .EndByteLength
-				If MoveVal >= trnMaxLength Then
-					CopyMemory TempByte(0), GetBytes(FN1,MoveVal,.Source.lEndAddress + .EndByteLength + 1,Mode)(0),trnMaxLength
-				ElseIf MoveVal > 0 Then
+				EndCharLength = .Source.lMaxAddress - .Source.lEndAddress - .EndByteLength
+				If EndCharLength >= trnMaxLength Then
+					CopyMemory TempByte(0), GetBytes(FN1,EndCharLength,.Source.lEndAddress + .EndByteLength + 1 + MoveVal,Mode)(0),trnMaxLength
+				ElseIf EndCharLength > 0 Then
 					ReDim srcByte(0) As Byte
-					srcByte = GetBytes(FN1,MoveVal,.Source.lEndAddress + .EndByteLength + 1,Mode)
-					trnStartPos = trnMaxLength \ MoveVal
+					srcByte = GetBytes(FN1,EndCharLength,.Source.lEndAddress + .EndByteLength + 1 + MoveVal,Mode)
+					trnStartPos = trnMaxLength \ EndCharLength
 					For i = 0 To trnStartPos - 1
-						CopyMemory TempByte(MoveVal * i), srcByte(0),MoveVal
+						CopyMemory TempByte(EndCharLength * i), srcByte(0), EndCharLength
 					Next i
-					i = (trnMaxLength Mod MoveVal)
+					i = (trnMaxLength Mod EndCharLength)
 					If i > 0 Then
-						CopyMemory TempByte(MoveVal * trnStartPos), srcByte(0),i
+						CopyMemory TempByte(EndCharLength * trnStartPos), srcByte(0), i
 					End If
 				End If
 			End If
@@ -24547,7 +24974,7 @@ End Function
 '修改整个 .NET 字串的引用代码
 Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPERTIE,FN1 As FILE_IMAGE,FN2 As FILE_IMAGE, _
 				ByVal orgMinOffset As Long,ByVal orgMaxOffset As Long,ByVal trnMinOffset As Long,ByVal trnMaxOffset As Long, _
-				ByVal Mode As Long,Msg As PROGRESS_MSG) As Long
+				ByVal MoveVal As Long,ByVal Mode As Long,Msg As PROGRESS_MSG) As Long
 	Dim i As Long,j As Long,k As Long,n As Long,m As Long,x As Long,orgRSize As Long,trnRSize As Long
 	Dim orgStrType As Integer,trnStrType As Integer,Temp1 As String,Temp2 As String,strData As STRING_PROPERTIE
 
@@ -24571,23 +24998,13 @@ Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPE
 	With orgFile
 		n = .SecList(.MinSecID).lPointerToRawData
 		m = .StreamList(.USStreamID).lPointerToRawData
-		'If .DataDirectory(2).lPointerToRawData > 0 Then
-		'	If SkipSection(orgFile,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-		'		m = .DataDirectory(2).lPointerToRawData - 1
-		'	Else
-		'		m = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
-		'	End If
-		'Else
-		'	m = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
-		'End If
 	End With
 	Temp1 = ByteToString(GetBytes(FN1,m - n + 1,n,Mode),CP_ISOLATIN1)
 
 	'开始提取字串及引用并修改引用
-	n = 0: m = 0
 	strData.Moveable = 2
 	Do While i < orgRSize Or j < trnRSize
-		k = 0
+		n = 0: m = 0: k = 0
 		If i < orgRSize Then
 			With strData.Source
 				.StrTypeLength = -CorSigUncompressData(FN1,i,.lHexLength,Mode)
@@ -24604,12 +25021,17 @@ Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPE
 					'检查结束标识符是否符合要求
 					'If GetByte(FN1,.lEndAddress + 1,Mode) = IIf(CheckStrRegExp(.sString,"[\x01-\x7F]",0,1) = True,0,1) Then
 					If GetByte(FN1,.lEndAddress + 1,Mode) < 2 Then
-						'仅获取未提取过的原始引用地址
-						If StrIDIndexDic.Exists(.lStartAddress) Then
-							n = StrIDIndexDic.Item(.lStartAddress)
-							If AllStrDataList(n).Source.GetRefState > 0 Then
-								strData.Source = AllStrDataList(n).Source
-								k = k + 1
+						If MoveVal = 0 Then
+							'仅获取未提取过的原始引用地址
+							If StrIDIndexDic.Exists(.lStartAddress) Then
+								n = StrIDIndexDic.Item(.lStartAddress)
+								If AllStrDataList(n).Source.GetRefState > 0 Then
+									strData.Source = AllStrDataList(n).Source
+									k = k + 1
+								Else
+									.GetRefState = 0
+									If GetNETVARefList(orgFile,FN1,strData.Source,-.StrTypeLength,Temp1,0,Mode) > 0 Then k = k + 1
+								End If
 							Else
 								.GetRefState = 0
 								If GetNETVARefList(orgFile,FN1,strData.Source,-.StrTypeLength,Temp1,0,Mode) > 0 Then k = k + 1
@@ -24654,17 +25076,18 @@ Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPE
 										ElseIf AllStrDataList(n).SplitState > 0 Then
 											.lReferenceNum = strData.Source.lReferenceNum
 											.Reference = strData.Source.Reference
-											Temp2 = StrListJoin(ChangeList(RefList2StrList(strData.Trans,0),RefList2StrList(AllStrDataList(n).Trans,0)),RefJoinStr)
-											If GetNETVARefList(trnFile,FN2,strData.Trans,-.StrTypeLength,Temp2,2,Mode) > 0 Then
+											Temp2 = StrListJoin(ChangeList(RefList2StrList(strData.Trans,0), _
+													RefList2StrList(AllStrDataList(n).Trans,0,MoveVal)),RefJoinStr)
+											If GetNETVARefList(trnFile,"",strData.Trans,-.StrTypeLength,Temp2,2,Mode) > 0 Then
 												If .Reference(0).sCode <> strData.Source.Reference(0).sCode Then
 													'写入翻译引用地址
 													WriteNETRefCode = WriteRefCode(trnFile,FN1,FN2,strData,Mode)
 													If WriteNETRefCode < 1 Then Exit Function
 												End If
-												.lReferenceNum = AllStrDataList(n).Trans.lReferenceNum
-												.Reference = AllStrDataList(n).Trans.Reference
-												GetNETVARefList(trnFile,FN2,strData.Trans,-.StrTypeLength,"",1,Mode)
-												AllStrDataList(n).Trans.Reference = .Reference
+												'.lReferenceNum = AllStrDataList(n).Trans.lReferenceNum
+												'.Reference = AllStrDataList(n).Trans.Reference
+												'GetNETVARefList(trnFile,"",strData.Trans,-.StrTypeLength,"",1,Mode)
+												'AllStrDataList(n).Trans.Reference = .Reference
 											End If
 											m = AllStrDataList(n).SplitState
 											Exit For
@@ -24672,13 +25095,13 @@ Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPE
 										Else
 											.lReferenceNum = strData.Source.lReferenceNum
 											.Reference = strData.Source.Reference
-											If GetNETVARefList(trnFile,FN2,strData.Trans,-.StrTypeLength,"",1,Mode) > 0 Then
+											If GetNETVARefList(trnFile,"",strData.Trans,-.StrTypeLength,"",1,Mode) > 0 Then
 												If .Reference(0).sCode <> strData.Source.Reference(0).sCode Then
 													'写入翻译引用地址
 													WriteNETRefCode = WriteRefCode(trnFile,FN1,FN2,strData,Mode)
 													If WriteNETRefCode < 1 Then Exit Function
 												End If
-												AllStrDataList(n).Trans.Reference = .Reference
+												'AllStrDataList(n).Trans.Reference = .Reference
 											End If
 											m = 0
 											'测试用
@@ -24693,7 +25116,7 @@ Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPE
 										'未被提取过的字串，获取引用地址
 										.lReferenceNum = strData.Source.lReferenceNum
 										.Reference = strData.Source.Reference
-										If GetNETVARefList(trnFile,FN2, strData.Trans,-.StrTypeLength,"",1,Mode) > 0 Then
+										If GetNETVARefList(trnFile,"", strData.Trans,-.StrTypeLength,"",1,Mode) > 0 Then
 											If .Reference(0).sCode <> strData.Source.Reference(0).sCode Then
 												'写入引用地址
 												WriteNETRefCode = WriteRefCode(trnFile,FN1,FN2,strData,Mode)
@@ -24710,13 +25133,13 @@ Private Function WriteNETRefCode(orgFile As FILE_PROPERTIE,trnFile As FILE_PROPE
 										If AllStrDataList(n).WriteType > 0 Then
 											.lReferenceNum = AllStrDataList(n).Trans.lReferenceNum
 											.Reference = AllStrDataList(n).Trans.Reference
-											If GetNETVARefList(trnFile,FN2,strData.Trans,-.StrTypeLength,"",1,Mode) > 0 Then
+											If GetNETVARefList(trnFile,"",strData.Trans,-.StrTypeLength,"",1,Mode) > 0 Then
 												If .Reference(0).sCode <> strData.Source.Reference(0).sCode Then
 													'写入翻译引用地址
 													WriteNETRefCode = WriteRefCode(trnFile,FN1,FN2,strData,Mode)
 													If WriteNETRefCode < 1 Then Exit Function
 												End If
-												AllStrDataList(n).Trans.Reference = .Reference
+												'AllStrDataList(n).Trans.Reference = .Reference
 											End If
 											Exit Do
 										End If
@@ -24964,19 +25387,21 @@ Private Function WriteCustomStrTypeRegExp(FN1 As FILE_IMAGE,FN2 As FILE_IMAGE,st
 	Dim n As Integer,y As Integer,Max As Integer,Matches As Object,Dic As Object
 	Dim CodeBytes() As Byte,TempByte() As Byte,Temp As String,PatternList() As String
 	'On Error GoTo localError
-	If OrgStrTypeList(strData.StrType - 5).CodeLoc > 0 Then
-		If strData.Source.lReferenceNum = 0 Then Exit Function
-		Max = strData.Source.lReferenceNum - 1
-	End If
-	'跳过部分移位字串的未选用引用
-	If strData.WriteType = 4 Then
-		Set Dic = CreateObject("Scripting.Dictionary")
-		For i = 0 To strData.Trans.lReferenceNum - 1
-			If Not Dic.Exists(strData.Trans.Reference(i).lAddress) Then
-				Dic.Add(strData.Trans.Reference(i).lAddress,i)
-			End If
-		Next i
-	End If
+	With strData
+		If OrgStrTypeList(.StrType - 5).CodeLoc > 0 Then
+			If .Source.lReferenceNum = 0 Then Exit Function
+			Max = .Source.lReferenceNum - 1
+		End If
+		'跳过部分移位字串的未选用引用
+		If .Moveable = 0 And .WriteType = 4 Then
+			Set Dic = CreateObject("Scripting.Dictionary")
+			For i = 0 To .Trans.lReferenceNum - 1
+				If Not Dic.Exists(.Trans.Reference(i).lAddress) Then
+					Dic.Add(.Trans.Reference(i).lAddress,i)
+				End If
+			Next i
+		End If
+	End With
 	ReDim CodeStr(0) As STRING_TYPE_LENGTH
 	For i = 0 To UBound(OrgStrTypeList)
 		s = 0: e = 0: x = -1
@@ -25065,7 +25490,7 @@ Private Function WriteCustomStrTypeRegExp(FN1 As FILE_IMAGE,FN2 As FILE_IMAGE,st
 		For j = 0 To Max
 			k = 0  '初始化长度类型
 			'跳过部分移位字串的未选用引用
-			If strData.WriteType = 4 Then
+			If strData.Moveable = 0 And strData.WriteType = 4 Then
 				If Not Dic.Exists(strData.Source.Reference(j).lAddress) Then GoTo NextPos
 			End If
 			ReDim PosList(7) As Long
@@ -25117,12 +25542,22 @@ Private Function WriteCustomStrTypeRegExp(FN1 As FILE_IMAGE,FN2 As FILE_IMAGE,st
 									Set Matches = RegExp.Execute(Temp)
 									'MsgBox Byte2Hex(StringToByte(Temp,CP_ISOLATIN1),0,-1) & "+++" & RegExp.Pattern & "+++" & Matches.Count
 									If Matches.Count > 0 Then
-										If GetStrTypeAddress(OrgStrTypeList(i),Matches(Matches.Count - 1),PosList) = True Then
-											If strData.LengthModeID = 0 Then
-												If .CodeLoc = 0 Then strData.LengthModeID = k
+										If .CodeLoc < 2 Then
+											If GetStrTypeAddress(OrgStrTypeList(i),Matches(Matches.Count - 1),PosList) = True Then
+												If strData.LengthModeID = 0 Then
+													If .CodeLoc = 0 Then strData.LengthModeID = k
+												End If
+												PosList(7) = Matches.Count
+												Exit For
 											End If
-											PosList(7) = Matches.Count
-											Exit For
+										Else
+											If GetStrTypeAddress(OrgStrTypeList(i),Matches(0),PosList) = True Then
+												If strData.LengthModeID = 0 Then
+													If .CodeLoc = 0 Then strData.LengthModeID = k
+												End If
+												PosList(7) = Matches.Count
+												Exit For
+											End If
 										End If
 									End If
 								End If
@@ -25136,8 +25571,14 @@ Private Function WriteCustomStrTypeRegExp(FN1 As FILE_IMAGE,FN2 As FILE_IMAGE,st
 							RegExp.Pattern = Replace$(PatternList(0),"{CPCode}",CodeStr(0).Pattern)
 							Set Matches = RegExp.Execute(Temp)
 							If Matches.Count > 0 Then
-								If GetStrTypeAddress(OrgStrTypeList(i),Matches(Matches.Count - 1),PosList) = True Then
-									PosList(7) = Matches.Count
+								If .CodeLoc < 2 Then
+									If GetStrTypeAddress(OrgStrTypeList(i),Matches(Matches.Count - 1),PosList) = True Then
+										PosList(7) = Matches.Count
+									End If
+								Else
+									If GetStrTypeAddress(OrgStrTypeList(i),Matches(0),PosList) = True Then
+										PosList(7) = Matches.Count
+									End If
 								End If
 							End If
 							Exit For
@@ -25761,16 +26202,22 @@ End Function
 '返回值 >0 获取的字串数，0 没有获取，-1 获取引用代码过程中中止 ，-2 获取字串过程中中止
 Private Function GetPE64SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As Object,File As FILE_PROPERTIE,FN As FILE_IMAGE, _
 		Msg As PROGRESS_MSG,LogList() As String,ByVal Mode As Long,ByVal ROffset As Long,ByVal RSize As Long) As Long
-	Dim i As Long,j As Long,n As Long,m As Long,k As Long,LogNo As Long,LogMax As Long
-	Dim Max As Long,SkipVal As Long,MaxVal As Long,MinVal As Long,VRK As Long,RVA As Long,bl As Long
+	Dim i As Long,j As Long,n As Long,m As Long,k As Long,x As Long,y As Long,LogNo As Long,LogMax As Long
+	Dim Max As Long,SkipVal As Long,MaxVal As Long,MinVal As Long,VRK As Long,RVA As Long
 	Dim MinLength As Integer,StrType As Integer,TagType As Integer,intList() As Integer
 	Dim FeatureCode As String,EndCharList() As String,StrTypeEndChar() As String,FormatText As String
-	Dim strData As STRING_SUB_PROPERTIE,Dic As Object,EndChar As String
-	Dim TempList() As String,Temp As String,sVRK As Long,pDic As Object,LengthSet As Long,MaxLength As Long
+	Dim strData As STRING_SUB_PROPERTIE,Dic As Object,EndChar As String,sVRK As Long,pDic As Object
+	Dim TempList() As String,Temp As String,StrTypeLengthList() As String
 
 	'没有字串开始地址算法的非 PE 文件，直接退出
 	If InStr(File.Magic,"NotPE64") Then
 		If UseRefTypeList(0).StrAddAlgorithm = "" Then Exit Function
+		'获取第一种字串前自定义字符串的字串类型长度
+		x = InStr(UseRefTypeList(0).StrAddAlgorithm,"{strtypelength}")
+		StrTypeLengthList = GetStrTypeLength(UseStrTypeList,ExtractSet,x)
+	Else
+		x = 0
+		ReDim StrTypeLengthList(0) As String
 	End If
 
 	'获取字符串最小字符数长度
@@ -25781,6 +26228,10 @@ Private Function GetPE64SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 	strData.inSectionID = SkipSection(File,ROffset,0,0,1)
 	If strData.inSectionID < 0 Then Exit Function
 	If strData.inSectionID > File.MaxSecIndex - 1 Then Exit Function
+	If File.SecList(strData.inSubSecID).SubSecs > 0 Then
+		strData.inSubSecID = SkipSubSection(File.SecList(strData.inSectionID),ROffset,0,0)
+		If strData.inSubSecID < 0 Then Exit Function
+	End If
 
 	'转换字符编码的提取顺序
 	intList = ConvertStrCPOrder(ExtractSet(4))
@@ -25860,35 +26311,39 @@ Private Function GetPE64SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 					StrType = UseRefTypeList(0).PrefixLength
 				End If
 				If CheckArray(TempList) = False Then GoTo NextNo
-				For bl = 0 To UBound(TempList)
-					Max = StrToLong(TempList(bl)) + StrType
+				For y = 0 To UBound(TempList)
+					Max = StrToLong(TempList(y)) + StrType
 					'获取可能的虚拟地址(即引用代码值)
-					If InStr(File.Magic,"NotPE") = 0 Then
-						RVA = GetLong(FN,Max,Mode)
-						RVA = CheckLongPlus(RVA,Max - VRK)	'获取虚拟地址对应的可能的字串地址
-					ElseIf UseRefTypeList(0).ByteOrder = 0 Then
-						RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,False)
-						RVA = Eval(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)))
-					Else
-						RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,True)
-						RVA = Eval(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)))
-					End If
-					If RVA > Max Then
-						'判断可能的字串地址是否符合范围
-						If RVA >= ROffset And RVA < RSize Then
-							If Not Dic.Exists(RVA) Then
-								Dic.Add(RVA,Max)
-								RVAList(k) = RVA
-								k = k + 1
+					For x = 0 To UBound(StrTypeLengthList)
+						If InStr(File.Magic,"NotPE") = 0 Then
+							RVA = GetLong(FN,Max,Mode)
+							RVA = CheckLongPlus(RVA,Max - VRK)	'获取虚拟地址对应的可能的字串地址
+						ElseIf UseRefTypeList(0).ByteOrder = 0 Then
+							RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,False)
+							RVA = Eval(Replace(Replace(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)), _
+									"{refstartaddress}",CStr(Max)),"{strtypelength}",StrTypeLengthList(x)))
+						Else
+							RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,True)
+							RVA = Eval(Replace(Replace(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)), _
+									"{refstartaddress}",CStr(Max)),"{strtypelength}",StrTypeLengthList(x)))
+						End If
+						If RVA > Max Then
+							'判断可能的字串地址是否符合范围
+							If RVA >= ROffset And RVA < RSize Then
+								If Not Dic.Exists(RVA) Then
+									Dic.Add(RVA,Max)
+									RVAList(k) = RVA
+									k = k + 1
+								End If
 							End If
 						End If
-					End If
+					Next x
 					'DoEvents '转让控制权，允许操作系统处理其他事件
 					If StopProcess(StopHwnd,VK_ESCAPE) = True Then
 						GetPE64SectionStrByVA = -2
 						GoTo ExitFunction
 					End If
-				Next bl
+				Next y
 				NextNo:
 				i = i + m + 1
 				If ExtractSet(25) = "0" Then
@@ -25933,8 +26388,8 @@ Private Function GetPE64SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 		MinVal = 1
 	End If
 	'超长而提取速度变慢的过滤设置
-	LengthSet = StrToLong(ExtractSet(52))
-	MaxLength = StrToLong(ExtractSet(53))
+	RVA = StrToLong(ExtractSet(52))
+	VRK = StrToLong(ExtractSet(53))
 
 	'初始化提取消息参数
 	LogNo = -1
@@ -25969,7 +26424,7 @@ Private Function GetPE64SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 				'提取字串
 				If .lHexLength >= MinLength Then
 					'检测字节的代码页
-					.lMaxAddress = getCodePageRegExp(FN,strData,UseLangList,intList,MinLength,StrTypeEndChar,EndCharList,Mode,0,LengthSet,MaxLength)
+					.lMaxAddress = getCodePageRegExp(FN,strData,UseLangList,intList,MinLength,StrTypeEndChar,EndCharList,Mode,0,RVA,VRK)
 					'检测字串的类型等其他属性
 					If .CodePage <> CP_UNKNOWN Then
 						StrType = 0
@@ -26028,16 +26483,22 @@ End Function
 '返回值 >0 获取的字串数，0 没有获取，-1 获取引用代码过程中中止 ，-2 获取字串过程中中止
 Private Function GetPE32SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As Object,File As FILE_PROPERTIE,FN As FILE_IMAGE, _
 		Msg As PROGRESS_MSG,LogList() As String,ByVal Mode As Long,ByVal ROffset As Long,ByVal RSize As Long) As Long
-	Dim i As Long,j As Long,n As Long,m As Long,k As Long,LogNo As Long,LogMax As Long
-	Dim Max As Long,SkipVal As Long,MaxVal As Long,MinVal As Long,VRK As Long,RVA As Long,bl As Long
+	Dim i As Long,j As Long,n As Long,m As Long,k As Long,x As Long,y As Long,LogNo As Long,LogMax As Long
+	Dim Max As Long,SkipVal As Long,MaxVal As Long,MinVal As Long,VRK As Long,RVA As Long
 	Dim MinLength As Integer,StrType As Integer,TagType As Integer,intList() As Integer
 	Dim FeatureCode As String,EndCharList() As String,StrTypeEndChar() As String,FormatText As String
 	Dim strData As STRING_SUB_PROPERTIE,Dic As Object,EndChar As String
-	Dim TempList() As String,Temp As String,LengthSet As Long,MaxLength As Long
+	Dim TempList() As String,Temp As String,StrTypeLengthList() As String
 
 	'没有字串开始地址算法的非 PE 文件，直接退出
 	If InStr(File.Magic,"NotPE32") Then
 		If UseRefTypeList(0).StrAddAlgorithm = "" Then Exit Function
+		'获取第一种字串前自定义字符串的字串类型长度
+		x = InStr(UseRefTypeList(0).StrAddAlgorithm,"{strtypelength}")
+		StrTypeLengthList = GetStrTypeLength(UseStrTypeList,ExtractSet,x)
+	Else
+		x = 0
+		ReDim StrTypeLengthList(0) As String
 	End If
 
 	'获取字符串最小字符数长度
@@ -26048,6 +26509,10 @@ Private Function GetPE32SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 	strData.inSectionID = SkipSection(File,ROffset,0,0,1)
 	If strData.inSectionID < 0 Then Exit Function
 	If strData.inSectionID > File.MaxSecIndex - 1 Then Exit Function
+	If File.SecList(strData.inSubSecID).SubSecs > 0 Then
+		strData.inSubSecID = SkipSubSection(File.SecList(strData.inSectionID),ROffset,0,0)
+		If strData.inSubSecID < 0 Then Exit Function
+	End If
 
 	'转换字符编码的提取顺序
 	intList = ConvertStrCPOrder(ExtractSet(4))
@@ -26072,16 +26537,26 @@ Private Function GetPE32SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 	'其他参数初始化
 	With File
 		MinVal = .SecList(.MinSecID).lPointerToRawData
-		If .DataDirectory(2).lPointerToRawData > 0 Then
-			If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-				MaxVal = .DataDirectory(2).lPointerToRawData - 1
+		If .DataDirs > 0 Then
+			If .DataDirectory(2).lPointerToRawData > 0 Then
+				If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
+					MaxVal = .DataDirectory(2).lPointerToRawData - 1
+				Else
+					MaxVal = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+				End If
 			Else
 				MaxVal = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
 			End If
 		Else
 			MaxVal = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
 		End If
-		VRK = .SecList(strData.inSectionID).lVirtualAddress - .SecList(strData.inSectionID).lPointerToRawData + .ImageBase
+		If File.SecList(strData.inSectionID).SubSecs > 0 Then
+			With File.SecList(strData.inSectionID).SubSecList(strData.inSubSecID)
+				VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
+			End With
+		Else
+			VRK = .SecList(strData.inSectionID).lVirtualAddress - .SecList(strData.inSectionID).lPointerToRawData + .ImageBase
+		End If
 	End With
 	'If Mode <> 0 Then
 		Temp = ByteToString(GetBytes(FN,MaxVal - MinVal + 1,MinVal,Mode),CP_ISOLATIN1)
@@ -26109,70 +26584,75 @@ Private Function GetPE32SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 		'm = 65535 - Val("&H" & Right$("0000" & Hex$(i + VRK),4))	'后2个字节查找，速度较快
 		m = 65535 - ((i + VRK) And 65535)	'后2个字节查找，速度较快，这里的 65535 不能替换成 &HFFFF，因为 &HFFFF 返回为 -1
 		If m > SkipVal - i Then m = SkipVal - i
-		If m > 0 Then
-			If InStr(File.Magic,"NotPE") = 0 Then
-				FeatureCode = Right$(ReverseHexCode(Hex$(i + VRK),8),4)
-				If Dic.Exists(FeatureCode) Then GoTo NextNo
-				Dic.Add(FeatureCode,"")
-				TempList = GetVAListRegExp(Temp,HexStr2RegExpPattern(FeatureCode,1),MinVal)
-				StrType = 0
-				bl = IIf(Left$(FeatureCode,2) = Mid$(FeatureCode,3),1,2)
-			ElseIf UseRefTypeList(0).ByteOrder = 0 Then
-				FeatureCode = Right$(ReverseHexCode(Hex$(i),UseRefTypeList(0).ByteLength * 2),UseRefTypeList(0).ByteLength)
-				If Dic.Exists(FeatureCode) Then GoTo NextNo
-				Dic.Add(FeatureCode,"")
-				FeatureCode = "[\x00-\xFF]{" & UseRefTypeList(0).ByteLength \ 2 & "}" & HexStr2RegExpPattern(FeatureCode,1)
-				TempList = GetVAListRegExp(Temp,UseRefTypeList(0).PrefixByte & FeatureCode,MinVal)
-				StrType = UseRefTypeList(0).PrefixLength
-				bl = 2
-			Else
-				FeatureCode = Left$(ValToStr(i,-UseRefTypeList(0).ByteLength * 2,True),UseRefTypeList(0).ByteLength)
-				If Dic.Exists(FeatureCode) Then GoTo NextNo
-				Dic.Add(FeatureCode,"")
-				TempList = GetVAListRegExp(Temp,UseRefTypeList(0).PrefixByte & HexStr2RegExpPattern(FeatureCode,1),MinVal)
-				StrType = UseRefTypeList(0).PrefixLength
-				bl = 2
-			End If
-			If CheckArray(TempList) = True Then
-				For j = 0 To UBound(TempList)
-					Max = StrToLong(TempList(j)) + StrType
-					For n = 2 To bl Step -1
-						If n = 1 Then
-							'后移一位后的二位字节必须相同
-							If GetByte(FN,Max + 1,Mode) <> GetByte(FN,Max + 2,Mode) Then Exit For
-						End If
-						'获取可能的虚拟地址(即引用代码值)
-						If InStr(File.Magic,"NotPE") = 0 Then
-							RVA = GetLong(FN,Max - n,Mode)
-						ElseIf UseRefTypeList(0).ByteOrder = 0 Then
-							RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,False)
-							RVA = Eval(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)))
-						Else
-							RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,True)
-							RVA = Eval(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)))
-						End If
-						If RVA > VRK Then
-							'获取虚拟地址对应的可能的字串地址
-							RVA = RVA - VRK
-							'判断可能的字串地址是否符合范围
-							If RVA >= ROffset And RVA < RSize Then
-								If Not Dic.Exists(RVA) Then
-									Dic.Add(RVA,Max)
-									RVAList(k) = RVA
-									k = k + 1
-								End If
+		If m < 1 Then
+			m = 0
+			GoTo NextNo
+		End If
+		If InStr(File.Magic,"NotPE") = 0 Then
+			FeatureCode = Right$(ReverseHexCode(Hex$(i + VRK),8),4)
+			If Dic.Exists(FeatureCode) Then GoTo NextNo
+			Dic.Add(FeatureCode,"")
+			TempList = GetVAListRegExp(Temp,HexStr2RegExpPattern(FeatureCode,1),MinVal)
+			StrType = 0
+			LogMax = IIf(Left$(FeatureCode,2) = Mid$(FeatureCode,3),1,2)
+		ElseIf UseRefTypeList(0).ByteOrder = 0 Then
+			FeatureCode = Right$(ReverseHexCode(Hex$(i),UseRefTypeList(0).ByteLength * 2),UseRefTypeList(0).ByteLength)
+			If Dic.Exists(FeatureCode) Then GoTo NextNo
+			Dic.Add(FeatureCode,"")
+			FeatureCode = "[\x00-\xFF]{" & UseRefTypeList(0).ByteLength \ 2 & "}" & HexStr2RegExpPattern(FeatureCode,1)
+			TempList = GetVAListRegExp(Temp,UseRefTypeList(0).PrefixByte & FeatureCode,MinVal)
+			StrType = UseRefTypeList(0).PrefixLength
+			LogMax = 2
+		Else
+			FeatureCode = Left$(ValToStr(i,-UseRefTypeList(0).ByteLength * 2,True),UseRefTypeList(0).ByteLength)
+			If Dic.Exists(FeatureCode) Then GoTo NextNo
+			Dic.Add(FeatureCode,"")
+			TempList = GetVAListRegExp(Temp,UseRefTypeList(0).PrefixByte & HexStr2RegExpPattern(FeatureCode,1),MinVal)
+			StrType = UseRefTypeList(0).PrefixLength
+			LogMax = 2
+		End If
+		If CheckArray(TempList) = False Then GoTo NextNo
+		For j = 0 To UBound(TempList)
+			Max = StrToLong(TempList(j)) + StrType
+			For y = 2 To LogMax Step -1
+				If y = 1 Then
+					'后移一位后的二位字节必须相同
+					If GetByte(FN,Max + 1,Mode) <> GetByte(FN,Max + 2,Mode) Then Exit For
+				End If
+				For x = 0 To UBound(StrTypeLengthList)
+					'获取可能的虚拟地址(即引用代码值)
+					If InStr(File.Magic,"NotPE") = 0 Then
+						RVA = GetLong(FN,Max - y,Mode)
+					ElseIf UseRefTypeList(0).ByteOrder = 0 Then
+						RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,False)
+						RVA = Eval(Replace(Replace(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)), _
+								"{refstartaddress}",CStr(Max)),"{strtypelength}",StrTypeLengthList(x)))
+					Else
+						RVA = Bytes2Val(GetBytes(FN,UseRefTypeList(0).ByteLength,Max,Mode),UseRefTypeList(0).ByteLength,True)
+						RVA = Eval(Replace(Replace(Replace(UseRefTypeList(0).StrAddAlgorithm,"{refcode}",CStr(RVA)), _
+								"{refstartaddress}",CStr(Max)),"{strtypelength}",StrTypeLengthList(x)))
+					End If
+					If RVA > VRK Then
+						'获取虚拟地址对应的可能的字串地址
+						RVA = RVA - VRK
+						'判断可能的字串地址是否符合范围
+						If RVA >= ROffset And RVA < RSize Then
+							If Not Dic.Exists(RVA) Then
+								Dic.Add(RVA,Max)
+								RVAList(k) = RVA
+								k = k + 1
 							End If
 						End If
-					Next n
-					'DoEvents '转让控制权，允许操作系统处理其他事件
-					If StopProcess(StopHwnd,VK_ESCAPE) = True Then
-						GetPE32SectionStrByVA = -2
-						GoTo ExitFunction
 					End If
-				Next j
+				Next x
+			Next y
+			'DoEvents '转让控制权，允许操作系统处理其他事件
+			If StopProcess(StopHwnd,VK_ESCAPE) = True Then
+				GetPE32SectionStrByVA = -2
+				GoTo ExitFunction
 			End If
-			NextNo:
-		End If
+		Next j
+		NextNo:
 		i = i + m + 1
 		If ExtractSet(25) = "0" Then
 			If Msg.hwnd > 0 Then
@@ -26209,8 +26689,8 @@ Private Function GetPE32SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 		MinVal = 1
 	End If
 	'超长而提取速度变慢的过滤设置
-	LengthSet = StrToLong(ExtractSet(52))
-	MaxLength = StrToLong(ExtractSet(53))
+	RVA = StrToLong(ExtractSet(52))
+	VRK = StrToLong(ExtractSet(53))
 
 	'初始化提取消息参数
 	LogNo = -1
@@ -26245,7 +26725,7 @@ Private Function GetPE32SectionStrByVA(DataList() As STRING_PROPERTIE,DataDic As
 				'提取字串
 				If .lHexLength >= MinLength Then
 					'检测字节的代码页
-					.lMaxAddress = getCodePageRegExp(FN,strData,UseLangList,intList,MinLength,StrTypeEndChar,EndCharList,Mode,0,LengthSet,MaxLength)
+					.lMaxAddress = getCodePageRegExp(FN,strData,UseLangList,intList,MinLength,StrTypeEndChar,EndCharList,Mode,0,RVA,VRK)
 					'检测字串的类型等其他属性
 					If .CodePage <> CP_UNKNOWN Then
 						StrType = 0
@@ -26319,6 +26799,10 @@ Private Function GetSectionStrBySmall(DataList() As STRING_PROPERTIE,DataDic As 
 	'按开始地址获取所在区段索引号
 	strData.inSectionID = SkipSection(File,ROffset,0,0,1)
 	If strData.inSectionID < 0 Then Exit Function
+	If File.SecList(strData.inSubSecID).SubSecs > 0 Then
+		strData.inSubSecID = SkipSubSection(File.SecList(strData.inSectionID),ROffset,0,0)
+		If strData.inSubSecID < 0 Then Exit Function
+	End If
 
 	'转换字符编码的提取顺序
 	intList = ConvertStrCPOrder(ExtractSet(4))
@@ -26464,6 +26948,10 @@ Private Function GetSectionStrByFull(DataList() As STRING_PROPERTIE,DataDic As O
 	'按开始地址获取所在区段索引号
 	strData.inSectionID = SkipSection(File,ROffset,0,0,1)
 	If strData.inSectionID < 0 Then Exit Function
+	If File.SecList(strData.inSubSecID).SubSecs > 0 Then
+		strData.inSubSecID = SkipSubSection(File.SecList(strData.inSectionID),ROffset,0,0)
+		If strData.inSubSecID < 0 Then Exit Function
+	End If
 
 	'转换字符编码的提取顺序
 	intList = ConvertStrCPOrder(ExtractSet(4))
@@ -27012,13 +27500,14 @@ End Function
 'fType >= 0 检查跟随字串的类型, 0,2 检查 StartCodePos, StartCodeString 项, 1,>2 不检查 StartCodePos, StartCodeString 项
 'fType > 9 检查指定的跟随字串的类型, 不检查 StartCodePos, StartCodeString 项
 'fType < 0 检查跟随引用地址的类型，不检查 StartCodePos, StartCodeString 项
+'fType = 2 检查跟随字串和跟随引用地址的类型，跟随字串的检查 StartCodePos, StartCodeString 项
 'GetCustomType > 0 时，返回 StartPos、EndPos 值
 Private Function GetCustomStrTypeRegExp(FN As Variant,strData As STRING_SUB_PROPERTIE,TypeList() As STRING_TYPE,ByVal Mode As Long,ByVal fType As Long) As Integer
-	Dim i As Long,j As Long,k As Long,x As Long,s As Long,e As Long
-	Dim n As Integer,y As Integer,Max As Integer
-	Dim Data As STRING_SUB_PROPERTIE,Temp As String,Matches As Object,PatternList() As String
+	Dim i As Long,j As Long,k As Long,x As Long,s As Long,e As Long,t As Long
+	Dim n As Integer,y As Integer,Max As Integer,sType As Integer
+	Dim Data As STRING_SUB_PROPERTIE,Temp As String,Temp1 As String,Matches As Object,PatternList() As String
 	If strData.CodePage < 101 Then Exit Function
-	Data = strData
+	Data = strData: sType = fType
 	If Data.lReferenceNum > 0 Then
 		For i = 0 To Data.lReferenceNum - 1
 			Data.Reference(i).StrType = 0
@@ -27029,9 +27518,11 @@ Private Function GetCustomStrTypeRegExp(FN As Variant,strData As STRING_SUB_PROP
 		s = 0: e = 0: x = -1
 		With TypeList(i)
 		'根据字串类型的不同转换检查方式
-		If fType = 2 Or fType > 9 Then
-			If fType > 9 And i <> fType - 10 Then GoTo NextNo
-			fType = IIf(.CodeLoc = 0,fType,-fType)
+		If sType = 2 Then
+			fType = IIf(.CodeLoc = 0,sType,-sType)
+		ElseIf sType > 9 Then
+			If i <> sType - 10 Then GoTo NextNo
+			fType = IIf(.CodeLoc = 0,sType,-sType)
 		End If
 		'跳过不需要检测的字串类型
 		If fType >= 0 Then
@@ -27131,7 +27622,12 @@ Private Function GetCustomStrTypeRegExp(FN As Variant,strData As STRING_SUB_PROP
 				End If
 			End If
 			If .CodeLoc = 0 Then
-				Temp = ByteToString(GetBytes(FN,.FristCodePos,Data.lStartAddress + IIf(x < 0,0,x) - .FristCodePos,Mode),CP_ISOLATIN1)
+				If x = -1 Or x = 0 Then
+					Temp = ByteToString(GetBytes(FN,.FristCodePos,Data.lStartAddress - .FristCodePos,Mode),CP_ISOLATIN1)
+				Else
+					Temp = ByteToString(GetBytes(FN,.FristCodePos,Data.lStartAddress + x - .FristCodePos,Mode),CP_ISOLATIN1)
+					Temp1 = ByteToString(GetBytes(FN,.FristCodePos,Data.lStartAddress - .FristCodePos,Mode),CP_ISOLATIN1)
+				End If
 			End If
 		End If
 		'不需要检查时跳过
@@ -27182,18 +27678,32 @@ Private Function GetCustomStrTypeRegExp(FN As Variant,strData As STRING_SUB_PROP
 								k = IIf(.LengthMode = 0,k - 1,.LengthMode)
 								If CodeStr(k).Length1 > 0 Then
 									RegExp.Pattern = Replace$(PatternList(0),"{LengthCode}",CodeStr(k).Pattern)
-									Set Matches = RegExp.Execute(Temp)
-									If Matches.Count > 0 Then
-										'If Data.lStartAddress = 1560768Then
-										'	MsgBox Byte2Hex(StringToByte(Temp,CP_ISOLATIN1),0,-1) & "+++" & RegExp.Pattern & "+++" & Matches.Count
-										'End If
-										If GetStrTypeAddress(TypeList(i),Matches(Matches.Count - 1),PosList) = True Then
-											PosList(7) = Matches.Count
-											Exit For
+									For t = 0 To IIf(x = -1 Or x = 0,0,1)
+										If t = 0 Then
+											Set Matches = RegExp.Execute(Temp)
+										Else
+											Set Matches = RegExp.Execute(Temp1)
 										End If
-									End If
+										If Matches.Count > 0 Then
+											'If Data.lStartAddress = 1560768Then
+											'	MsgBox Byte2Hex(StringToByte(Temp,CP_ISOLATIN1),0,-1) & "+++" & RegExp.Pattern & "+++" & Matches.Count
+											'End If
+											If .CodeLoc < 2 Then
+												If GetStrTypeAddress(TypeList(i),Matches(Matches.Count - 1),PosList) = True Then
+													PosList(7) = Matches.Count
+													Exit Do
+												End If
+											Else
+												If GetStrTypeAddress(TypeList(i),Matches(0),PosList) = True Then
+													PosList(7) = Matches.Count
+													Exit Do
+												End If
+											End If
+										End If
+									Next t
 								End If
 							Loop Until k < 2 Or .LengthMode > 0
+							If PosList(7) > 0 Then Exit For
 						ElseIf .CPCodePos <> 0 Then
 							PatternList(0) = Replace$(PatternList(0),"{LengthCode}","")
 							PatternList(1) = PatternList(0)
@@ -27201,12 +27711,26 @@ Private Function GetCustomStrTypeRegExp(FN As Variant,strData As STRING_SUB_PROP
 							PosList(0) = InStr(PatternList(1),"{CPCode}")
 							PosList(1) = InStr(PatternList(1),"{LengthCode}")
 							RegExp.Pattern = Replace$(PatternList(0),"{CPCode}",CodeStr(0).Pattern)
-							Set Matches = RegExp.Execute(Temp)
-							If Matches.Count > 0 Then
-								If GetStrTypeAddress(TypeList(i),Matches(Matches.Count - 1),PosList) = True Then
-									PosList(7) = Matches.Count
+							For t = 0 To IIf(x = -1 Or x = 0,0,1)
+								If t = 0 Then
+									Set Matches = RegExp.Execute(Temp)
+								Else
+									Set Matches = RegExp.Execute(Temp1)
 								End If
-							End If
+								If Matches.Count > 0 Then
+									If .CodeLoc < 2 Then
+										If GetStrTypeAddress(TypeList(i),Matches(Matches.Count - 1),PosList) = True Then
+											PosList(7) = Matches.Count
+											Exit For
+										End If
+									Else
+										If GetStrTypeAddress(TypeList(i),Matches(0),PosList) = True Then
+											PosList(7) = Matches.Count
+											Exit For
+										End If
+									End If
+								End If
+							Next t
 							Exit For
 						Else
 							Exit For
@@ -27229,9 +27753,17 @@ Private Function GetCustomStrTypeRegExp(FN As Variant,strData As STRING_SUB_PROP
 					GetCustomStrTypeRegExp = i + 5
 					If .CodeLoc = 0 Then
 						If fType = 0 Or fType = 2 Then strData = Data
-						If .LengthCodePos <> 0 And PosList(3) > 0 And x <> -1 Then
-							If x > 0 Then strData.lStartAddress = strData.lStartAddress + x
-							strData.lHexLength = strData.lHexLength - IIf(x < 0,-(x + 1),x)
+						If .LengthCodePos <> 0 And PosList(3) > 0 And x <> -1 And x <> 0 Then
+							Select Case t
+							Case 0
+								strData.lStartAddress = strData.lStartAddress + x
+								strData.lHexLength = strData.lHexLength - x
+							Case 1
+								strData.lEndAddress = strData.lEndAddress - x
+								strData.lHexLength = strData.lHexLength - x
+							Case Else
+								Exit Function
+							End Select
 							strData.sString = ByteToString(GetBytes(FN,strData.lHexLength,strData.lStartAddress,Mode),strData.CodePage)
 							strData.lCharLength = Len(strData.sString)
 						End If
@@ -27358,10 +27890,18 @@ Private Function GetCustomStrTypeLengthRegExp(FN As Variant,strData As STRING_PR
 								RegExp.Pattern = Replace$(PatternList(0),"{LengthCode}",CodeStr(k).Pattern)
 								Set Matches = RegExp.Execute(Temp)
 								If Matches.Count > 0 Then
-									If GetStrTypeAddress(StrType,Matches(Matches.Count - 1),PosList) = True Then
-										If strData.LengthModeID = 0 Then strData.LengthModeID = k
-										PosList(7) = Matches.Count
-										Exit For
+									If .CodeLoc < 2 Then
+										If GetStrTypeAddress(StrType,Matches(Matches.Count - 1),PosList) = True Then
+											If strData.LengthModeID = 0 Then strData.LengthModeID = k
+											PosList(7) = Matches.Count
+											Exit For
+										End If
+									Else
+										If GetStrTypeAddress(StrType,Matches(0),PosList) = True Then
+											If strData.LengthModeID = 0 Then strData.LengthModeID = k
+											PosList(7) = Matches.Count
+											Exit For
+										End If
 									End If
 								End If
 							End If
@@ -27375,8 +27915,14 @@ Private Function GetCustomStrTypeLengthRegExp(FN As Variant,strData As STRING_PR
 						RegExp.Pattern = Replace$(PatternList(0),"{CPCode}",CodeStr(0).Pattern)
 						Set Matches = RegExp.Execute(Temp)
 						If Matches.Count > 0 Then
-							If GetStrTypeAddress(StrType,Matches(Matches.Count - 1),PosList) = True Then
-								PosList(7) = Matches.Count
+							If .CodeLoc < 2 Then
+								If GetStrTypeAddress(StrType,Matches(Matches.Count - 1),PosList) = True Then
+									PosList(7) = Matches.Count
+								End If
+							Else
+								If GetStrTypeAddress(StrType,Matches(0),PosList) = True Then
+									PosList(7) = Matches.Count
+								End If
 							End If
 						End If
 						Exit For
@@ -27415,7 +27961,7 @@ End Function
 
 '定位代码页值和字串长度值的所在位置
 'LocList(0) = 检测代码页值，LocList(1) = 检测长度值
-'LocList(2) = 代码页值位置，LocList(3) = 字串长度值的位置，LocList(4) = 开始和结束标记的位置
+'LocList(2) = 代码页值位置，LocList(3) = 字串长度值的位置，LocList(4) = 结束标记的位置
 Private Function GetStrTypeAddress(StrType As STRING_TYPE,Match As Object,LocList() As Long) As Boolean
 	Dim i As Integer
 	LocList(2) = 0: LocList(3) = 0: LocList(4) = 0
@@ -27426,13 +27972,13 @@ Private Function GetStrTypeAddress(StrType As STRING_TYPE,Match As Object,LocLis
 		If .CodeLoc = 0 Then
 			LocList(2) = i
 			If .StartCodePos > 0 Then
-				LocList(4) = LocList(2) + Len(Match.SubMatches(1))
+				LocList(4) = LocList(2) + Len(Match.SubMatches(0) & Match.SubMatches(1))
 			End If
 		ElseIf .CodeLoc > 0 Then
 			If .CPCodeStartLength = 0 Then
 				LocList(2) = i
 				If .RefCodeStartPos > 0 Then
-					LocList(4) = LocList(2) + Len(Match.SubMatches(1))
+					LocList(4) = LocList(2) + Len(Match.SubMatches(0) & Match.SubMatches(1))
 				End If
 			Else
 				LocList(2) = i + Len(Match.SubMatches(0))
@@ -27461,13 +28007,13 @@ Private Function GetStrTypeAddress(StrType As STRING_TYPE,Match As Object,LocLis
 		If .CodeLoc = 0 Then
 			LocList(3) = i
 			If .StartCodePos > 0 Then
-				LocList(4) = LocList(3) + Len(Match.SubMatches(1))
+				LocList(4) = LocList(3) + Len(Match.SubMatches(0) & Match.SubMatches(1))
 			End If
 		ElseIf .CodeLoc > 0 Then
 			If .LengthCodeStartLength = 0 Then
 				LocList(3) = i
 				If .RefCodeStartPos > 0 Then
-					LocList(4) = LocList(3) + Len(Match.SubMatches(1))
+					LocList(4) = LocList(3) + Len(Match.SubMatches(0) & Match.SubMatches(1))
 				End If
 			Else
 				LocList(3) = i + Len(Match.SubMatches(0))
@@ -27658,10 +28204,18 @@ Private Sub StrType2RegExpPattern(TypeList() As STRING_TYPE,Optional ByVal TypeI
 			End If
 		End If
 		If .CPCodePos > 0 And .LengthCodePos > 0 Then
-			If .CPCodePos > .LengthCodePos Then
-				Temp = .RegExpPattern(0)
-				.RegExpPattern(0) = .RegExpPattern(2)
-				.RegExpPattern(2) = Temp
+			If .CodeLoc < 2 Then
+				If .LengthCodePos > .CPCodePos Then
+					Temp = .RegExpPattern(0)
+					.RegExpPattern(0) = .RegExpPattern(2)
+					.RegExpPattern(2) = Temp
+				End If
+			Else
+				If .CPCodePos > .LengthCodePos Then
+					Temp = .RegExpPattern(0)
+					.RegExpPattern(0) = .RegExpPattern(2)
+					.RegExpPattern(2) = Temp
+				End If
 			End If
 		End If
 		If .StartCodePos <> 0 Then
@@ -27699,7 +28253,8 @@ End Sub
 'fType < 0 检查跟随引用地址的类型，不通过缩短字串长度检查是否符合长度标识符要求
 Private Function GetCustomStrTypeValue(CodeStr() As STRING_TYPE_LENGTH,FN As Variant,Data As STRING_SUB_PROPERTIE,StrType As STRING_TYPE, _
 		ByVal Mode As Long,ByVal fType As Long,Optional ByVal LengthModeID As Integer,Optional ByVal MoveVal As Long) As Long
-	Dim i As Long,j As Long,k As Long,x As Long,y As Long,m As Long,n As Long,Stemp As Boolean,TempByte() As Byte
+	Dim i As Long,j As Long,k As Long,x As Long,y As Long,m As Long,n As Long,t As Long
+	Dim Stemp As Boolean,TempByte() As Byte
 	GetCustomStrTypeValue = -1
 	With StrType
 		k = IIf(.CodeLoc = 0,10,5)
@@ -27722,21 +28277,29 @@ Private Function GetCustomStrTypeValue(CodeStr() As STRING_TYPE_LENGTH,FN As Var
 							CodeStr(k).Bytes = GetBytes(FN,j + i + 1,Data.lStartAddress + MoveVal - i,Mode)
 							m = 0
 							For n = 0 To j + 1
-								For y = 0 To IIf(j = 1,0,-1) Step -1
-									If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - m,j,y),0,i + m - 1) > 0 Then
-										CodeStr(k).Length1 = x - m: CodeStr(k).Size = j: GetCustomStrTypeValue = m
-										CodeStr(k).ByteOrder = y
-										Exit Do
+								For t = 0 To 1
+									For y = 0 To IIf(j = 1,0,-1) Step -1
+										If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - m,j,y),0,i + m - 1) > 0 Then
+											CodeStr(k).Length1 = x - m: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+											GetCustomStrTypeValue = m
+											Exit Do
+										End If
+									Next y
+									If t = 0 Then
+										m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+									ElseIf n < Data.lCharLength And n < j Then
+										m = StrHexLength(Mid$(Data.sString,Data.lCharLength - n,n + 1),Data.CodePage,0)
+									Else
+										Exit For
 									End If
-								Next y
-								m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+								Next t
 							Next n
 						Else
 							CodeStr(k).Bytes = GetBytes(FN,i,Data.lStartAddress + MoveVal - i,Mode)
 							For y = 0 To IIf(j = 1,0,-1) Step -1
 								If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x,j,y),0,i - 1) > 0 Then
-									CodeStr(k).Length1 = x: CodeStr(k).Size = j: GetCustomStrTypeValue = 0
-									CodeStr(k).ByteOrder = y
+									CodeStr(k).Length1 = x: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+									GetCustomStrTypeValue = 0
 									Exit Do
 								End If
 							Next y
@@ -27765,21 +28328,29 @@ Private Function GetCustomStrTypeValue(CodeStr() As STRING_TYPE_LENGTH,FN As Var
 							CodeStr(k).Bytes = GetBytes(FN,j + i + 1,Data.lStartAddress + MoveVal - i,Mode)
 							m = 0
 							For n = 0 To j + 1
-								For y = 0 To IIf(j = 1,0,-1) Step -1
-									If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - n,j,y),0,i + m - 1) > 0 Then
-										CodeStr(k).Length1 = x - n: CodeStr(k).Size = j: GetCustomStrTypeValue = m
-										CodeStr(k).ByteOrder = y
-										Exit Do
+								For t = 0 To 1
+									For y = 0 To IIf(j = 1,0,-1) Step -1
+										If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - n,j,y),0,i + m - 1) > 0 Then
+											CodeStr(k).Length1 = x - n: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+											GetCustomStrTypeValue = m
+											Exit Do
+										End If
+									Next y
+									If t = 0 Then
+										m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+									ElseIf n < Data.lCharLength And n < j Then
+										m = StrHexLength(Mid$(Data.sString,Data.lCharLength - n,n + 1),Data.CodePage,0)
+									Else
+										Exit For
 									End If
-								Next y
-								m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+								Next t
 							Next n
 						Else
 							CodeStr(k).Bytes = GetBytes(FN,i,Data.lStartAddress + MoveVal - i,Mode)
 							For y = 0 To IIf(j = 1,0,-1) Step -1
 								If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x,j,y),0,i - 1) > 0 Then
-									CodeStr(k).Length1 = x: CodeStr(k).Size = j: GetCustomStrTypeValue = 0
-									CodeStr(k).ByteOrder = y
+									CodeStr(k).Length1 = x: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+									GetCustomStrTypeValue = 0
 									Exit Do
 								End If
 							Next y
@@ -27816,33 +28387,49 @@ Private Function GetCustomStrTypeValue(CodeStr() As STRING_TYPE_LENGTH,FN As Var
 							m = 0
 							If Stemp = False Then
 								For n = 0 To j + 1
-									For y = 0 To IIf(j = 1,0,-1) Step -1
-										If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - m,j,y),0,i + m - 1) > 0 Then
-											CodeStr(k).Length1 = x - m: CodeStr(k).Size = j: GetCustomStrTypeValue = m
-											CodeStr(k).ByteOrder = y
-											Exit Do
+									For t = 0 To 1
+										For y = 0 To IIf(j = 1,0,-1) Step -1
+											If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - m,j,y),0,i + m - 1) > 0 Then
+												CodeStr(k).Length1 = x - m: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+												GetCustomStrTypeValue = m
+												Exit Do
+											End If
+										Next y
+										If t = 0 Then
+											m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+										ElseIf n < Data.lCharLength And n < j Then
+											m = StrHexLength(Mid$(Data.sString,Data.lCharLength - n,n + 1),Data.CodePage,0)
+										Else
+											Exit For
 										End If
-									Next y
-									m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+									Next t
 								Next n
 							Else
 								For n = 0 To j + 1
-									For y = 0 To IIf(j = 1,0,-1) Step -1
-										If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - n,j,y),0,i + m - 1) > 0 Then
-											CodeStr(k).Length1 = x - n: CodeStr(k).Size = j: GetCustomStrTypeValue = m
-											CodeStr(k).ByteOrder = y
-											Exit Do
+									For t = 0 To 1
+										For y = 0 To IIf(j = 1,0,-1) Step -1
+											If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - n,j,y),0,i + m - 1) > 0 Then
+												CodeStr(k).Length1 = x - n: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+												GetCustomStrTypeValue = m
+												Exit Do
+											End If
+										Next y
+										If t = 0 Then
+											m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+										ElseIf n < Data.lCharLength And n < j Then
+											m = StrHexLength(Mid$(Data.sString,Data.lCharLength - n,n + 1),Data.CodePage,0)
+										Else
+											Exit For
 										End If
-									Next y
-									m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+									Next t
 								Next n
 							End If
 						Else
 							CodeStr(k).Bytes = GetBytes(FN,i,Data.lStartAddress + MoveVal - i,Mode)
 							For y = 0 To IIf(j = 1,0,-1) Step -1
 								If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x,j,y),0,i - 1) > 0 Then
-									CodeStr(k).Length1 = x: CodeStr(k).Size = j: GetCustomStrTypeValue = 0
-									CodeStr(k).ByteOrder = y
+									CodeStr(k).Length1 = x: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+									GetCustomStrTypeValue = 0
 									Exit Do
 								End If
 							Next y
@@ -27871,21 +28458,29 @@ Private Function GetCustomStrTypeValue(CodeStr() As STRING_TYPE_LENGTH,FN As Var
 							CodeStr(k).Bytes = GetBytes(FN,j + i + 1,Data.lStartAddress + MoveVal - i,Mode)
 							m = 0
 							For n = 0 To j + 1
-								For y = 0 To IIf(j = 1,0,-1) Step -1
-									If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - n - m,j,y),0,i + m - 1) > 0 Then
-										CodeStr(k).Length1 = x - n - m: CodeStr(k).Size = j: GetCustomStrTypeValue = m
-										CodeStr(k).ByteOrder = y
-										Exit Do
+								For t = 0 To 1
+									For y = 0 To IIf(j = 1,0,-1) Step -1
+										If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x - n - m,j,y),0,i + m - 1) > 0 Then
+											CodeStr(k).Length1 = x - n - m: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+											GetCustomStrTypeValue = m
+											Exit Do
+										End If
+									Next y
+									If t = 0 Then
+										m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+									ElseIf n < Data.lCharLength And n < j Then
+										m = StrHexLength(Mid$(Data.sString,Data.lCharLength - n,n + 1),Data.CodePage,0)
+									Else
+										Exit For
 									End If
-								Next y
-								m = StrHexLength(Mid$(Data.sString,1,n + 1),Data.CodePage,0)
+								Next t
 							Next n
 						Else
 							CodeStr(k).Bytes = GetBytes(FN,i,Data.lStartAddress + MoveVal - i,Mode)
 							For y = 0 To IIf(j = 1,0,-1) Step -1
 								If InByteRegExp(CodeStr(k).Bytes,Val2Bytes(x,j,y),0,i - 1) > 0 Then
-									CodeStr(k).Length1 = x: CodeStr(k).Size = j: GetCustomStrTypeValue = 0
-									CodeStr(k).ByteOrder = y
+									CodeStr(k).Length1 = x: CodeStr(k).Size = j: CodeStr(k).ByteOrder = y
+									GetCustomStrTypeValue = 0
 									Exit Do
 								End If
 							Next y
@@ -28251,7 +28846,7 @@ Private Function AddToDataList(File As FILE_PROPERTIE,DataList() As STRING_PROPE
 		.ScapeIDForMove = -1
 		.Moveable = Moveable(File,DataList(i))
 		.Source = strData
-		.Source.inSubSecID = SkipSubSection(File.SecList(.Source.inSectionID),.Source.lStartAddress,0,0)
+		'.Source.inSubSecID = SkipSubSection(File.SecList(.Source.inSectionID),.Source.lStartAddress,0,0)
 		.Source.sString = ReConvert(strData.sString)
 		'.Source.CodePage = strData.CodePage
 		'.Source.lStartAddress = strData.lStartAddress
@@ -28895,7 +29490,7 @@ Private Function Settings(ByVal OptionID As Integer) As Integer
 	Dim MsgList() As String,TempList() As String
 	Settings = -1
 	If getMsgList(UIDataList,MsgList,"Settings",1) = False Then Exit Function
-	ReDim TempList(6) As String
+	ReDim TempList(7) As String
 	TempList(0) = MsgList(28)
 	TempList(1) = MsgList(98)
 	TempList(2) = MsgList(77)
@@ -28903,6 +29498,7 @@ Private Function Settings(ByVal OptionID As Integer) As Integer
 	TempList(4) = MsgList(106)
 	TempList(5) = MsgList(8)
 	TempList(6) = MsgList(22)
+	TempList(7) = MsgList(118)
 	Begin Dialog UserDialog 770,518,MsgList(0),.SettingsDlgFunc ' %GRID:10,7,1,1
 		TextBox 0,0,0,21,.SuppValueBox
 		Text 10,7,750,28,MsgList(1),.MainText
@@ -29124,6 +29720,12 @@ Private Function Settings(ByVal OptionID As Integer) As Integer
 		CheckBox 160,385,570,21,MsgList(115),.AddAndDelReserveVoiceCheckBox
 		CheckBox 160,413,570,21,MsgList(116),.WriteStringVoiceCheckBox
 
+		GroupBox 140,42,620,434,MsgList(118),.HelpSystemGroup
+		Text 160,70,580,63,MsgList(119),.HelpSystemText
+		OptionGroup .HelpSystemOption
+			OptionButton 170,147,570,28,MsgList(120),.TextHelpSystemButton
+			OptionButton 170,182,570,21,MsgList(121),.CHMHelpSystemButton
+
 		PushButton 20,490,90,21,MsgList(4),.HelpButton
 		PushButton 120,490,100,21,MsgList(7),.ResetButton
 		PushButton 330,490,90,21,MsgList(5),.TestButton
@@ -29154,12 +29756,11 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		DlgVisible "CPValList",False
 		DlgVisible "CPMenuButton",False
 
-		TempList =  ReSplit("0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",",")
-  		DlgListBoxArray "FristCodePosList",TempList()
-  		ReDim Preserve TempList(32) As String
-  		For i = 17 To 32
+		ReDim Preserve TempList(32) As String
+		For i = 0 To 32
   			TempList(i) = CStr$(i)
   		Next i
+  		DlgListBoxArray "FristCodePosList",TempList()
   		DlgListBoxArray "RefFristCodePosList",TempList()
 
   		TempList = ReSplit("-5,-4,-3,-2,-1,0,1,2,3,4,5",",")
@@ -29180,14 +29781,13 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
   		DlgListBoxArray "RefCPCodeSizeList",TempList()
   		DlgListBoxArray "RefLengthCodeSizeList",TempList()
 
-  		TempList = ReSplit(MsgList(48) & ",0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",",")
+  		ReDim Preserve TempList(33) As String
+  		For i = 1 To 33
+  			TempList(i) = CStr$(i - 1)
+  		Next i
   		DlgListBoxArray "CPCodePosList",TempList()
   		DlgListBoxArray "LengthCodePosList",TempList()
   		DlgListBoxArray "StartCodePosList",TempList()
-  		ReDim Preserve TempList(33) As String
-  		For i = 18 To 33
-  			TempList(i) = CStr$(i - 1)
-  		Next i
   		DlgListBoxArray "RefCPCodePosList",TempList()
   		DlgListBoxArray "RefLengthCodePosList",TempList()
 		DlgListBoxArray "RefCodeBefPosList",TempList()
@@ -29254,6 +29854,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		DlgValue "AddAndDelFilterVoiceCheckBox",StrToLong(Selected(27))
 		DlgValue "AddAndDelReserveVoiceCheckBox",StrToLong(Selected(28))
 		DlgValue "WriteStringVoiceCheckBox",StrToLong(Selected(29))
+		DlgValue "HelpSystemOption",StrToLong(Selected(30))
 
 		If CheckArray(UpdateSet) = True Then
 			DlgValue "UpdateSet",StrToLong(UpdateSet(0))
@@ -29721,6 +30322,13 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			DlgVisible "SpaceWithPointCheckBox",False
 			DlgVisible "FilterDisplayAtStartupBox",False
 		End If
+		If DlgValue("MenuList") <> 7 Then
+			DlgVisible "HelpSystemGroup",False
+			DlgVisible "HelpSystemText",False
+			DlgVisible "HelpSystemOption",False
+			DlgVisible "TextHelpSystemButton",False
+			DlgVisible "CHMHelpSystemButton",False
+		End If
 		Select Case DlgValue("MenuList")
 		Case Is < 5
 			DlgVisible "TestButton",False
@@ -29731,7 +30339,10 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			DlgVisible "ResetButton",False
 			DlgVisible "TestButton",False
 			DlgVisible "CleanButton",False
-			DlgVisible "EditUILangButton",True
+		Case 7
+			DlgVisible "TestButton",False
+			DlgVisible "CleanButton",False
+			DlgVisible "EditUILangButton",False
 		End Select
 
 		'设置当前对话框字体
@@ -30253,6 +30864,20 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				DlgVisible "FilterDisplayAtStartupBox",False
 			End If
 
+			If DlgValue("MenuList") = 7 Then
+				DlgVisible "HelpSystemGroup",True
+				DlgVisible "HelpSystemText",True
+				DlgVisible "HelpSystemOption",True
+				DlgVisible "TextHelpSystemButton",True
+				DlgVisible "CHMHelpSystemButton",True
+			Else
+				DlgVisible "HelpSystemGroup",False
+				DlgVisible "HelpSystemText",False
+				DlgVisible "HelpSystemOption",False
+				DlgVisible "TextHelpSystemButton",False
+				DlgVisible "CHMHelpSystemButton",False
+			End If
+
 			Select Case DlgValue("MenuList")
 			Case Is < 5
 				DlgVisible "ResetButton",True
@@ -30269,24 +30894,55 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				DlgVisible "TestButton",False
 				DlgVisible "CleanButton",False
 				DlgVisible "EditUILangButton",True
+			Case 7
+				DlgVisible "ResetButton",True
+				DlgVisible "TestButton",False
+				DlgVisible "CleanButton",False
+				DlgVisible "EditUILangButton",False
 			End Select
 			Exit Function
 		Case "HelpButton"
 			Select Case DlgValue("MenuList")
 			Case 0
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1012,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("StrTypeSetHelp")
 			Case 1
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1021,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RefTypeSetHelp")
 			Case 2
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1005,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("EncodeRangeSetHelp")
 			Case 3
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1026,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("WriteSetHelp")
 			Case 4
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1013,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("FileReadWriteAndVoiceSetHelp")
 			Case 5
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1003,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("UpdateSetHelp")
 			Case 6
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1027,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("UILangSetHelp")
+			Case 7
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1028,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
+				Call Help("HelpSystemSetHelp")
 			End Select
 			Exit Function
 		Case "CancelButton"
@@ -30562,7 +31218,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 							MsgBox Replace$(Replace$(MsgList(71),"%s",.sName),"%d",MsgList(72)),vbOkOnly+vbInformation,MsgList(0)
 							Set Dic = Nothing
 							Exit Function
-						ElseIf CheckStrRegExp(.Algorithm,"[0-9\{\}StraAdesf\+\-\x20]",0,1,True) = False Then
+						ElseIf CheckStrRegExp(.Algorithm,"[0-9\{\}StrAdesfTypLngth\+\-\x20]",0,1,True) = False Then
 							MsgBox Replace$(Replace$(MsgList(71),"%s",.sName),"%d",MsgList(73)),vbOkOnly+vbInformation,MsgList(0)
 							Set Dic = Nothing
 							Exit Function
@@ -30589,7 +31245,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 							Set Dic = Nothing
 							Exit Function
 						ElseIf .StrAddAlgorithm <> "" Then
-							If CheckStrRegExp(.StrAddAlgorithm,"[0-9\{\}RefCodStarAds\+\-\x20]",0,1,True) = False Then
+							If CheckStrRegExp(.StrAddAlgorithm,"[0-9\{\}RefCodStrAdsTypLngth\+\-\x20]",0,1,True) = False Then
 								MsgBox Replace$(Replace$(MsgList(71),"%s",.sName),"%d",MsgList(84)),vbOkOnly+vbInformation,MsgList(0)
 								Set Dic = Nothing
 								Exit Function
@@ -30617,13 +31273,17 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				If CheckRefTypeArray(UseRefTypeList) = True Then
 					j = 0
 					For i = 0 To UBound(RefTypeList)
-						If RefTypeList(i).Template = UseRefTypeList(0).Template Then j = j + 1
-					Next i
-					If j = 0 Then
-						If MsgBox(MsgList(75),vbYesNo+vbInformation,MsgList(12)) = vbNo Then
-							Set Dic = Nothing
-							Exit Function
+						If RefTypeList(i).Template <> UseRefTypeList(0).Template Then
+							If RefTypeList(i).sName = UseRefTypeList(0).sName Then
+								j = j + 1
+								Exit For
+							End If
 						End If
+					Next i
+					If j > 0 Then
+						MsgBox Replace$(MsgList(75),"%s",UseRefTypeList(0).sName),vbOkOnly+vbInformation,MsgList(0)
+						Set Dic = Nothing
+						Exit Function
 					End If
 				End If
 				Dic.RemoveAll
@@ -31551,6 +32211,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				HeaderID = DlgValue("RefTypeNameList")
 				If HeaderID < 0 Then Exit Function
 				DlgText "RefAlgorithmBox",""
+				DlgText "StrAddAlgorithmBox",""
 				DlgText "RefCodeLengthBox",""
 				DlgValue "RefCodeByteSequenceList",0
 				DlgText "RefCodePrefixByteBox",""
@@ -32336,7 +32997,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If getMsgList(UIDataList,MsgList,"Settings",1) = True Then
 				DlgText -1,MsgList(0)
 				DlgText "MainText",MsgList(1)
-				ReDim TempList(6) As String
+				ReDim TempList(7) As String
 				TempList(0) = MsgList(28)
 				TempList(1) = MsgList(98)
 				TempList(2) = MsgList(77)
@@ -32344,6 +33005,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				TempList(4) = MsgList(106)
 				TempList(5) = MsgList(8)
 				TempList(6) = MsgList(22)
+				TempList(7) = MsgList(118)
 				i = DlgValue("MenuList")
 				DlgListBoxArray "MenuList",TempList()
 				DlgValue "MenuList",i
@@ -32506,6 +33168,11 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				DlgText "AddAndDelReserveVoiceCheckBox",MsgList(115)
 				DlgText "WriteStringVoiceCheckBox",MsgList(116)
 
+				DlgText "HelpSystemGroup",MsgList(118)
+				DlgText "HelpSystemText",MsgList(119)
+				DlgText "TextHelpSystemButton",MsgList(120)
+				DlgText "CHMHelpSystemButton",MsgList(121)
+
 				DlgText "HelpButton",MsgList(4)
 				DlgText "ResetButton",MsgList(7)
 				DlgText "TestButton",MsgList(5)
@@ -32603,6 +33270,23 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				DlgListBoxArray "RefCodeByteSequenceList",TempList()
 				DlgValue "RefCodeByteSequenceList",i
 			End If
+		Case 7
+			Select Case DlgItem$
+			Case "HelpSystemOption"
+				Selected(30) = DlgValue("HelpSystemOption")
+			Case "ResetButton"
+				ReDim TempArray(1) As String
+				TempArray(0) = MsgList(1)
+				TempArray(1) = MsgList(2)
+				Select Case ShowPopupMenu(TempArray,vbPopupUseRightButton)
+				Case Is < 0
+					Exit Function
+				Case 0
+					DlgValue "HelpSystemOption",1
+				Case Else
+					DlgValue "HelpSystemOption",StrToLong(SelectedBak(30))
+				End Select
+			End Select
 		End Select
 	Case 3 ' 文本框或者组合框文本被更改
 		If getMsgList(UIDataList,MsgList,"SettingsDlgFunc",1) = False Then Exit Function
@@ -32703,7 +33387,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 					If Replace$(DlgText("RefAlgorithmBox")," ","") = "" Then
 						MsgBox MsgList(72),vbOkOnly+vbInformation,MsgList(0)
 						Exit Function
-					ElseIf CheckStrRegExp(DlgText("RefAlgorithmBox"),"[0-9\{\}StraAdesf\+\-\x20]",0,1,True) = False Then
+					ElseIf CheckStrRegExp(DlgText("RefAlgorithmBox"),"[0-9\{\}StrAdesfTypLngth\+\-\x20]",0,1,True) = False Then
 						MsgBox MsgList(73),vbOkOnly+vbInformation,MsgList(0)
 						Exit Function
 					End If
@@ -32751,7 +33435,7 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				Case "StrAddAlgorithmBox"
 					If DlgText("StrAddAlgorithmBox") <> "" Then
 						DlgText "StrAddAlgorithmBox",Trim$(DlgText("StrAddAlgorithmBox"))
-						If CheckStrRegExp(DlgText("StrAddAlgorithmBox"),"[0-9\{\}RefCodStarAds\+\-\x20]",0,1,True) = False Then
+						If CheckStrRegExp(DlgText("StrAddAlgorithmBox"),"[0-9\{\}RefCodStrAdsTypLngth\+\-\x20]",0,1,True) = False Then
 							MsgBox MsgList(84),vbOkOnly+vbInformation,MsgList(0)
 							Exit Function
 						End If
@@ -32907,19 +33591,45 @@ Private Function SettingsDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		If SuppValue = 1 Then
 			Select Case DlgValue("MenuList")
 			Case 0
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1012,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("StrTypeSetHelp")
 			Case 1
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1021,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RefTypeSetHelp")
 			Case 2
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1005,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("EncodeRangeSetHelp")
 			Case 3
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1026,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("WriteSetHelp")
 			Case 4
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1013,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("FileReadWriteAndVoiceSetHelp")
 			Case 5
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1003,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("UpdateSetHelp")
 			Case 6
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1027,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("UILangSetHelp")
+			Case 7
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1028,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
+				Call Help("HelpSystemSetHelp")
 			End Select
 		End If
 	End Select
@@ -33122,6 +33832,7 @@ Private Function GetSettings(ByVal SelSet As String) As Long
 		Selected(27) = GetSetting(AppName,"Option","AddAndDelFilterVoiceCheckBox",1)
 		Selected(28) = GetSetting(AppName,"Option","AddAndDelReserveVoiceCheckBox",1)
 		Selected(29) = GetSetting(AppName,"Option","WriteStringVoiceCheckBox",1)
+		Selected(30) = GetSetting(AppName,"Option","HelpSystemOption",1)
 		If SelSet = "Option" Then
 			If CheckArray(Selected) = True Then GetSettings = 1
 			Exit Function
@@ -33397,11 +34108,22 @@ Private Function GetSettings(ByVal SelSet As String) As Long
 					Temp = LCase$(SourceFile.FileName) & "*"
 				End If
 				ReDim FileList(0) As FILE_LIST
-				If ExtractSet(39) = "0" Then
+				Select Case ExtractSet(39)
+				Case "0"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",SourceFile.FileName & ".sfl","*.sfl",True)
-				Else
+				Case "1"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\",SourceFile.FileName & ".sfl","*.sfl",True)
-				End If
+				Case Else
+					ExtractSet(35) = GetSetting(AppName,"GetString","FilterListFolder","")
+					If ExtractSet(35) = "" Then
+						TempList = GetFiles(FileList,MacroLoc & "\Data\",SourceFile.FileName & ".sfl","*.sfl",True)
+					ElseIf Dir$(ExtractSet(35),vbDirectory) = "" Then
+						TempList = GetFiles(FileList,MacroLoc & "\Data\",SourceFile.FileName & ".sfl","*.sfl",True)
+					Else
+						TempList = GetFiles(FileList,ExtractSet(35) & "\",SourceFile.FileName & ".sfl","*.sfl",True)
+					End If
+					ExtractSet(35) = ""
+				End Select
 				For i = 0 To UBound(TempList)
 					If (LCase$(TempList(i)) Like Temp) Then
 						ExtractSet(35) = FileList(i).FilePath
@@ -33411,18 +34133,34 @@ Private Function GetSettings(ByVal SelSet As String) As Long
 			End If
 		End If
 		If ExtractSet(35) = "" Then
-			If ExtractSet(39) = "0" Then
+			Select Case ExtractSet(39)
+			Case "0"
 				ExtractSet(35) = GetSetting(AppName,"GetString","FilterListFile",MacroLoc & "\Data\" & FilterFile)
 				If InStr(ExtractSet(35),"\") = 0 Then ExtractSet(35) = MacroLoc & "\Data\" & ExtractSet(35)
 				If Dir$(ExtractSet(35)) = "" Then ExtractSet(35) = MacroLoc & "\Data\" & FilterFile
-			Else
+			Case "1"
 				ExtractSet(35) = GetSetting(AppName,"GetString","FilterListFile",PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".sfl")
 				If InStr(ExtractSet(35),"\") = 0 Then ExtractSet(35) = PSL.ActiveProject.Location & "\" & ExtractSet(35)
 				If Dir$(ExtractSet(35)) = "" Then
 					ExtractSet(35) = MacroLoc & "\Data\" & FilterFile
 					ExtractSet(39) = "0"
 				End If
-			End If
+			Case Else
+				ExtractSet(35) = GetSetting(AppName,"GetString","FilterListFolder","")
+				If ExtractSet(35) = "" Then
+					ExtractSet(35) = MacroLoc & "\Data\" & FilterFile
+					ExtractSet(39) = "0"
+				ElseIf Dir$(ExtractSet(35),vbDirectory) = "" Then
+					ExtractSet(35) = MacroLoc & "\Data\" & FilterFile
+					ExtractSet(39) = "0"
+				Else
+					ExtractSet(35) = ExtractSet(35) & "\" & GetSetting(AppName,"GetString","FilterListFile",SourceFile.FileName & ".sfl")
+					If Dir$(ExtractSet(35)) = "" Then
+						ExtractSet(35) = MacroLoc & "\Data\" & FilterFile
+						ExtractSet(39) = "0"
+					End If
+				End If
+			End Select
 		End If
 		If SelSet = "FilterStrDic" Then
 			If ExtractSet(35) <> "" Then GetSettings = 7
@@ -33442,11 +34180,22 @@ Private Function GetSettings(ByVal SelSet As String) As Long
 					Temp = LCase$(SourceFile.FileName) & ".*"
 				End If
 				ReDim FileList(0) As FILE_LIST
-				If ExtractSet(40) = "0" Then
+				Select Case ExtractSet(40)
+				Case "0"
 					TempList = GetFiles(FileList,MacroLoc & "\Data\",SourceFile.FileName & ".srl","*.srl",True)
-				Else
+				Case "1"
 					TempList = GetFiles(FileList,PSL.ActiveProject.Location & "\",SourceFile.FileName & ".srl","*.srl",True)
-				End If
+				Case Else
+					ExtractSet(37) = GetSetting(AppName,"GetString","ReserveListFolder","")
+					If ExtractSet(37) = "" Then
+						TempList = GetFiles(FileList,MacroLoc & "\Data\",SourceFile.FileName & ".srl","*.srl",True)
+					ElseIf Dir$(ExtractSet(37),vbDirectory) = "" Then
+						TempList = GetFiles(FileList,MacroLoc & "\Data\",SourceFile.FileName & ".srl","*.srl",True)
+					Else
+						TempList = GetFiles(FileList,ExtractSet(37) & "\",SourceFile.FileName & ".srl","*.srl",True)
+					End If
+					ExtractSet(37) = ""
+				End Select
 				For i = 0 To UBound(TempList)
 					If (LCase$(TempList(i)) Like "*" & Temp) Then
 						ExtractSet(37) = FileList(i).FilePath
@@ -33456,18 +34205,34 @@ Private Function GetSettings(ByVal SelSet As String) As Long
 			End If
 		End If
 		If ExtractSet(37) = "" Then
-			If ExtractSet(40) = "0" Then
+			Select Case ExtractSet(40)
+			Case "0"
 				ExtractSet(37) = GetSetting(AppName,"GetString","ReserveListFile",MacroLoc & "\Data\" & ReserveFile)
 				If InStr(ExtractSet(37),"\") = 0 Then ExtractSet(37) = MacroLoc & "\Data\" & ExtractSet(37)
 				If Dir$(ExtractSet(37)) = "" Then ExtractSet(37) = MacroLoc & "\Data\" & ReserveFile
-			Else
+			Case "1"
 				ExtractSet(37) = GetSetting(AppName,"GetString","ReserveListFile",PSL.ActiveProject.Location & "\" & SourceFile.FileName & ".srl")
 				If InStr(ExtractSet(37),"\") = 0 Then ExtractSet(37) = PSL.ActiveProject.Location & "\" & ExtractSet(37)
 				If Dir$(ExtractSet(37)) = "" Then
 					ExtractSet(37) = MacroLoc & "\Data\" & ReserveFile
 					ExtractSet(40) = "0"
 				End If
-			End If
+			Case Else
+				ExtractSet(37) = GetSetting(AppName,"GetString","ReserveListFolder","")
+				If ExtractSet(37) = "" Then
+					ExtractSet(37) = MacroLoc & "\Data\" & ReserveFile
+					ExtractSet(40) = "0"
+				ElseIf Dir$(ExtractSet(37),vbDirectory) = "" Then
+					ExtractSet(37) = MacroLoc & "\Data\" & ReserveFile
+					ExtractSet(40) = "0"
+				Else
+					ExtractSet(37) = ExtractSet(37) & "\" & GetSetting(AppName,"GetString","ReserveListFile",SourceFile.FileName & ".srl")
+					If Dir$(ExtractSet(37)) = "" Then
+						ExtractSet(37) = MacroLoc & "\Data\" & ReserveFile
+						ExtractSet(40) = "0"
+					End If
+				End If
+			End Select
 		End If
 		If SelSet = "ReserveStrDic" Then
 			If ExtractSet(37) <> "" Then GetSettings = 8
@@ -33613,11 +34378,12 @@ Private Function GetUI(ByVal UIDir As String,ByVal UISet As String,ByVal OSLng A
 	Dim i As Long,j As Long,n As Long
 	Dim TempList() As String,TempArray() As String
 	If GetUIList(UIDir,UIFiles) = True Then
-		If UISet = "" Or UISet = "0" Then
+		Select Case UISet
+		Case "","0"
 			UISet = OSLng
-		ElseIf UISet = "1" Then
+		Case "1"
 			UISet = Right$("0" & Hex$(PSL.Option(pslOptionSystemLanguage)),4)
-		End If
+		End Select
 		UISet = LCase$(UISet)
 		TempList = ReSplit(UISet,";")
 		For i = 0 To UBound(UIFiles)
@@ -33640,21 +34406,18 @@ Private Function GetUI(ByVal UIDir As String,ByVal UISet As String,ByVal OSLng A
 	End If
 	If LngFile = "" Then LngFile = UIDir & AppName & "_" & OSLng & ".lng"
 	If Dir$(LngFile) = "" Then
-		LngFile = UIDir & AppName & "_" & OSLng & ".lng"
-		If Dir$(LngFile) = "" Then
-			For i = 0 To 2
-				If i = 0 Then
-					LngFile = UIDir & AppName & "_0804.lng"
-				ElseIf i = 1 Then
-					LngFile = UIDir & AppName & "_0404.lng"
-				Else
-					LngFile = UIFiles(0).FilePath
-				End If
-				If Dir$(LngFile) <> "" Then Exit For
-				LngFile = ""
-			Next i
-			If LngFile = "" Then Err.Raise(1,"NotExitFile",UIDir & AppName & "_*.lng")
-		End If
+		For i = 0 To 2
+			If i = 0 Then
+				LngFile = UIDir & AppName & "_0804.lng"
+			ElseIf i = 1 Then
+				LngFile = UIDir & AppName & "_0404.lng"
+			Else
+				LngFile = UIFiles(0).FilePath
+			End If
+			If Dir$(LngFile) <> "" Then Exit For
+			LngFile = ""
+		Next i
+		If LngFile = "" Then Err.Raise(1,"NotExitFile",UIDir & AppName & "_*.lng")
 	End If
 	GetUI = getINIFile(UIData,LngFile,"unicodeFFFE",0)
 End Function
@@ -34015,6 +34778,7 @@ End Sub
 
 
 '获取自定义引用算法列表
+'获取自定义引用算法列表
 'FileName = "" 直接退出
 '返回 AddRefTypeList = True 表示有新增类型
 Private Function AddRefTypeList(TypeList() As REF_TYPE,ByVal FileName As String,ByVal Data As String,ByVal Mode As Long) As Boolean
@@ -34175,3 +34939,31 @@ Private Sub DelRefTypeArray(DataList() As REF_TYPE,ByVal IDList As Variant)
 		ReDim DataList(0) As REF_TYPE
 	End If
 End Sub
+
+
+'获取文件及子文件的数据结构信息
+Private Function GetHeaders(ByVal strFilePath As String,File As FILE_PROPERTIE,ByVal Mode As Long,FileType As Integer) As Boolean
+	Select Case GetFileFormat(File.FilePath,Mode,FileType)
+	Case "PE","NET",""
+		GetHeaders = GetPEHeaders(File.FilePath,File,Mode)
+	Case "MAC"
+		GetHeaders = GetMacHeaders(File.FilePath,File,Mode)
+	End Select
+End Function
+
+
+'获取原址内移位的字串引用
+Private Function GetVARefForMoveMode2(trnFile As FILE_PROPERTIE,strData As STRING_PROPERTIE) As STRING_PROPERTIE
+	Dim VAList() As String
+	GetVARefForMoveMode2 = strData
+	With strData
+		If .Source.MoveLength + .Trans.MoveLength = 0 Then Exit Function
+		If .Moveable > 0 Then Exit Function
+		If .Source.lReferenceNum = 0 Then Exit Function
+		If .WriteType > 2 Then Exit Function
+		GetVARefForMoveMode2.Trans.Reference = .Source.Reference
+		GetVARefForMoveMode2.Trans.lReferenceNum = .Source.lReferenceNum
+		VAList = ChangeList(RefList2StrList(.Source,0),RefList2StrList(.Trans,0))
+		Call GetVARefList(trnFile,"",GetVARefForMoveMode2.Trans,OrgStrTypeList,.TagType,.Moveable,StrListJoin(VAList,RefJoinStr),2,0,0)
+	End With
+End Function
