@@ -1,6 +1,6 @@
 Attribute VB_Name = "modEncodeQuery"
 '' Character Encode Query for Passolo
-'' (c) 2014 - 2019 by wanfu (Last modified on 2019.09.25)
+'' (c) 2014 - 2019 by wanfu (Last modified on 2019.09.08)
 
 '' Command Line Format: Command <Source><-><Translation> <Switch>
 '' Command: Name of this Macros file
@@ -3497,9 +3497,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(12) = "版本: %v (构建 %b)\r\n" & _
 					"OS 版本: Windows XP/2000 或以上\r\n" & _
 					"Passolo 版本: Passolo 5.0 或以上\r\n" & _
-					"版权: 汉化新世纪\r\n授权: 免费软件\r\n" & _
+					"授权: 免费软件\r\n" & _
 					"网址: http://www.hanzify.org\r\n" & _
-					"作者: 汉化新世纪成员 - wanfu (2014 - 2018)\r\n" & _
+					"作者: wanfu (2014 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(13) = "关于字符编码查询"
 
@@ -3588,9 +3588,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(12) = "セ: %v (篶 %b)\r\n" & _
 					"OS セ: Windows XP/2000 ┪\r\n" & _
 					"Passolo セ: Passolo 5.0 ┪\r\n" & _
-					"舦: 簙て穝\r\n甭舦: 禣硁砰\r\n" & _
+					"甭舦: 禣硁砰\r\n" & _
 					"呼: http://www.hanzify.org\r\n" & _
-					": 簙て穝Θ - wanfu (2014 - 2018)\r\n" & _
+					": wanfu (2014 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(13) = "闽じ絪絏琩高"
 
@@ -3681,9 +3681,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(12) = "Version: %v (Build %b)\r\n" & _
 					"OS Version: Windows XP/2000 or higher\r\n" & _
 					"Passolo Version: Passolo 5.0 or higher\r\n" & _
-					"Copyright: Hanzify\r\nLicense: Freeware\r\n" & _
+					"License: Freeware\r\n" & _
 					"HomePage: http://www.hanzify.org\r\n" & _
-					"Author: Hanzify member - wanfu (2014 - 2018)\r\n" & _
+					"Author: wanfu (2014 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(13) = "About Character Encode Query"
 

@@ -1,5 +1,5 @@
 '' Character Encode Modifier for Passolo
-'' (c) 2018 - 2019 by wanfu (Last modified on 2019.05.21)
+'' (c) 2018 - 2019 by wanfu (Last modified on 2019.11.08)
 
 '' Command Line Format: Command <FilePath>
 '' Command: Name of this Macros file
@@ -9,8 +9,8 @@
 
 Option Explicit
 
-Private Const Version = "2019.05.21"
-Private Const Build = "190521"
+Private Const Version = "2019.11.08"
+Private Const Build = "191108"
 Private Const JoinStr = vbFormFeed  'vbBack
 Private Const TextJoinStr = vbCrLf
 Private Const LoadMode = 0&
@@ -1229,6 +1229,7 @@ Private Type STRING_SUB_PROPERTIE
 	sString			As String	'函数名称
 	lStartAddress	As Long		'函数的开始地址
 	inSectionID		As Integer	'函数所在节的索引号
+	inSubSecID		As Integer	'函数所在节的子节索引号
 	lReferenceNum	As Long		'引用次数
 	GetRefState		As Integer	'获取函数引用列表的状态，0 = 未获取，1 = 已获取
 	lFunNameAddress	As Long		'函数名称的开始地址
@@ -2944,7 +2945,7 @@ Private Function GetCodePage(File As FILE_PROPERTIE,DataList() As STRING_SUB_PRO
 						End If
 						Set Matches = RegExp.Execute(Temp)
 						If Matches.Count > 0 Then
-							n = Matches.Count -1
+							n = Matches.Count - 1
 							.Reference(j).lOrgCodePage = CodePageList(k).CodePage
 							.Reference(j).lUseCodePage = CodePageList(k).CodePage
 							.Reference(j).iCPByteLength = GetValByteLength(Matches(n).Length - 1)
@@ -2966,6 +2967,34 @@ Private Function GetCodePage(File As FILE_PROPERTIE,DataList() As STRING_SUB_PRO
 					Next x
 					If Stemp = True Then Exit For
 				Next k
+				If Stemp = False Then
+					Select Case File.Magic
+					Case "PE32","NET32","MAC32"
+						RegExp.Pattern = CodePageFrontChar32 & "\x00+" & ImportFunRefFrontChar32 & "$"
+						Set Matches = RegExp.Execute(Temp)
+						If Matches.Count > 0 Then
+							.Reference(j).lOrgCodePage = CP_ACP
+							.Reference(j).lUseCodePage = CP_ACP
+							.Reference(j).iCPByteLength = GetValByteLength(Matches(0).Length - 3)
+							.Reference(j).lCPAddress = .Reference(j).lAddress + Matches(0).FirstIndex - m + 1
+							.Reference(j).iCPByteOrder = False
+							GetCodePage = GetCodePage + 1
+							Stemp = True
+						End If
+					Case Else
+						RegExp.Pattern = CodePageFrontChar64 & "\x00+" & ImportFunRefFrontChar64 & "$"
+						Set Matches = RegExp.Execute(Temp)
+						If Matches.Count > 0 Then
+							.Reference(j).lOrgCodePage = CP_ACP
+							.Reference(j).lUseCodePage = CP_ACP
+							.Reference(j).iCPByteLength = GetValByteLength(Matches(0).Length - 5)
+							.Reference(j).lCPAddress = .Reference(j).lAddress + Matches(0).FirstIndex - m + 1
+							.Reference(j).iCPByteOrder = False
+							GetCodePage = GetCodePage + 1
+							Stemp = True
+						End If
+					End Select
+				End If
 				If Stemp = False Then
 					.Reference(j).lOrgCodePage = CP_UNKNOWN
 					.Reference(j).lUseCodePage = CP_UNKNOWN
@@ -3638,7 +3667,7 @@ Private Function GetPEHeader(FN As FILE_IMAGE,File As FILE_PROPERTIE,ByVal Mode 
 
 	ExitFunction:
 	ReDim File.SecList(1)			'As SECTION_PROPERTIE
-	ReDim File.DataDirectory(15)	'As SUB_SECTION_PROPERTIE
+	ReDim File.DataDirectory(0)		'As SUB_SECTION_PROPERTIE
 	ReDim File.CLRList(0)			'As SUB_SECTION_PROPERTIE
 	ReDim File.StreamList(0)		'As SUB_SECTION_PROPERTIE
 	With File
@@ -3804,6 +3833,7 @@ Private Function GetImportTable(File As FILE_PROPERTIE,DataList() As STRING_SUB_
 	On Error GoTo ExitFunction
 	With File
 		'检查是否有输入表结构
+		If .DataDirs = 0 Then Exit Function
 		If .DataDirectory(1).lVirtualAddress = 0 Then Exit Function
 
 		'打开文件
@@ -3911,23 +3941,29 @@ Private Function GetImportTable(File As FILE_PROPERTIE,DataList() As STRING_SUB_
 					Select Case Temp
 					Case "MultiByteToWideChar", "WideCharToMultiByte"
 						ReDim Preserve DataList(n) 'As STRING_SUB_PROPERTIE
-						DataList(n).DllName = pImportInfo.pDetailInfo(j).strDllName
-						DataList(n).DllLang = "MS"
-						DataList(n).sString = Temp
-						DataList(n).lStartAddress = Offset
-						DataList(n).lFunNameAddress = dwOffset
-						DataList(n).inSectionID = SkipSection(File,DataList(n).lStartAddress,0,0)
+						With DataList(n)
+							.DllName = pImportInfo.pDetailInfo(j).strDllName
+							.DllLang = "MS"
+							.sString = Temp
+							.lStartAddress = Offset
+							.lFunNameAddress = dwOffset
+							.inSectionID = SkipSection(File,.lStartAddress,0,0)
+							.inSubSecID = SkipSubSection(File.SecList(.inSectionID),.lStartAddress,0,0)
+						End With
 						n = n + 1
 					Case Else
 						For k = 0 To UBound(QtFunNameList)
 							If InStr(Temp,QtFunNameList(k)) Then
 								ReDim Preserve DataList(n) 'As STRING_SUB_PROPERTIE
-								DataList(n).DllName = pImportInfo.pDetailInfo(j).strDllName
-								DataList(n).DllLang = "QT"
-								DataList(n).sString = Temp
-								DataList(n).lStartAddress = Offset
-								DataList(n).lFunNameAddress = dwOffset
-								DataList(n).inSectionID = SkipSection(File,DataList(n).lStartAddress,0,0)
+								With DataList(n)
+									.DllName = pImportInfo.pDetailInfo(j).strDllName
+									.DllLang = "QT"
+									.sString = Temp
+									.lStartAddress = Offset
+									.lFunNameAddress = dwOffset
+									.inSectionID = SkipSection(File,.lStartAddress,0,0)
+									.inSubSecID = SkipSubSection(File.SecList(.inSectionID),.lStartAddress,0,0)
+								End With
 								n = n + 1
 								Exit For
 							End If
@@ -4284,7 +4320,7 @@ Private Function GetMacHeader(FN As FILE_IMAGE,File As FILE_PROPERTIE,ByVal Mode
 
 	ExitFunction:
 	ReDim File.SecList(1)			'As SECTION_PROPERTIE
-	ReDim File.DataDirectory(15)	'As SECTION_PROPERTIE
+	ReDim File.DataDirectory(0)		'As SECTION_PROPERTIE
 	ReDim File.CLRList(0)			'As SECTION_PROPERTIE
 	ReDim File.StreamList(0)		'As SUB_SECTION_PROPERTIE
 	With File
@@ -4508,6 +4544,42 @@ Private Function SkipSection(File As FILE_PROPERTIE,ByVal Offset As Long,MinVal 
 End Function
 
 
+'获取子文件节索引号
+'Mode = False 检查偏移地址
+'Mode = True 检查相对虚拟地址
+'返回文件节索引号、MinVal、MaxVal 值
+Private Function SkipSubSection(Sec As SECTION_PROPERTIE,ByVal Offset As Long,MinVal As Long,MaxVal As Long,Optional ByVal Mode As Boolean) As Long
+	Dim i As Integer
+	SkipSubSection = -1
+	If Sec.SubSecs = 0 Then Exit Function
+	MinVal = 0: MaxVal = 0
+	If Offset < 0 Then Exit Function
+	If Mode = False Then
+		For i = 0 To Sec.SubSecs - 1
+			With Sec.SubSecList(i)
+				If Offset >= .lPointerToRawData And Offset < .lPointerToRawData + .lSizeOfRawData Then
+					SkipSubSection = i
+					MinVal = .lPointerToRawData
+					MaxVal = MinVal + .lSizeOfRawData - 1
+					Exit For
+				End If
+			End With
+		Next i
+	Else
+		For i = 0 To Sec.SubSecs - 1
+			With Sec.SubSecList(i)
+				If Offset >= .lVirtualAddress And Offset < .lVirtualAddress + .lVirtualSize Then
+					SkipSubSection = i
+					MinVal = .lVirtualAddress
+					MaxVal = MinVal + .lVirtualSize - 1
+					Exit For
+				End If
+			End With
+		Next i
+	End If
+End Function
+
+
 '获取各种文件头的索引号及地址 (这里的地址都已转换为偏移地址)
 'Mode = 0 时，仅返回 RVA 所在目录的索引号
 'Mode = 1 时，RVA = RVA 所在目录的最大地址 + 1，SkipVal = 比 RVA 大的目录最小地址
@@ -4516,6 +4588,7 @@ End Function
 Private Function SkipHeader(File As FILE_PROPERTIE,RVA As Long,Optional SkipVal As Long,Optional ByVal Mode As Long,Optional ByVal fType As Long) As Long
 	Dim i As Integer,j As Integer,endPos As Long
 	SkipHeader = -1
+	If File.DataDirs = 0 Then Exit Function
 	i = 15 + IIf(File.LangType = NET_FILE_SIGNATURE,7 + File.NetStreams,0)
 	ReDim List(i) As IMAGE_DATA_DIRECTORY
 	With File
@@ -4867,6 +4940,9 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 	If fType > -1 Then
 		If .inSectionID < 0 Then .inSectionID = SkipSection(File,.lStartAddress,0,0)
 		If .inSectionID < 0 Then GoTo ExitFunction
+		If File.SecList(.inSectionID).SubSecs > 0 Then
+			If .inSubSecID < 0 Then .inSubSecID = SkipSubSection(File.SecList(.inSectionID),.lStartAddress,0,0)
+		End If
 		If ShowMsg > 0 Then
 			Msg = GetTextBoxString(ShowMsg) & " "
 		ElseIf ShowMsg < 0 Then
@@ -4989,35 +5065,46 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 			'If .GetRefState > 0 Then Exit Function
 			'If SkipHeader(File,strData.lStartAddress,0,0) > -1 Then GoTo ExitFunction
 			'获取字串的虚拟地址
-			With File.SecList(.inSectionID)
-				If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
-					VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
-				Else
-					GoTo ExitFunction
-				End If
-			End With
-			With File
-				SkipVal = .SecList(.MinSecID).lPointerToRawData
-				If .DataDirectory(2).lPointerToRawData > 0 Then
-					If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-						RSize = .DataDirectory(2).lPointerToRawData - 1
+			If File.SecList(.inSectionID).SubSecs > 0 Then
+				With File.SecList(.inSectionID).SubSecList(.inSubSecID)
+					If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
+						VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
 					Else
-						RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+						GoTo ExitFunction
 					End If
-				Else
-					RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
-				End If
-			End With
+				End With
+			Else
+				With File.SecList(.inSectionID)
+					If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
+						VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
+					Else
+						GoTo ExitFunction
+					End If
+				End With
+			End If
 			.lReferenceNum = 0
 			ReDim strData.Reference(0) 'As REFERENCE_PROPERTIE
 			.Reference(0).sOrgCode = ReverseHexCode(Hex$(.lStartAddress + VRK),8)
-			'If Mode = 0 Then
-			'	TempList = GetVAList(FN.ImageByte,Val2Bytes(.lStartAddress + VRK,4),SkipVal,RSize)
-			'Else
-				TempList = GetVAListRegExp(ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1), _
-							ImportFunRefFrontChar32 & HexStr2RegExpPattern(.Reference(0).sOrgCode,1),SkipVal)
-
-			'End If
+			With File
+				SkipVal = .SecList(.MinSecID).lPointerToRawData
+				If RefAdds = "" Then
+					If .DataDirs > 0 Then
+						If .DataDirectory(2).lPointerToRawData > 0 Then
+							If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
+								RSize = .DataDirectory(2).lPointerToRawData - 1
+							Else
+								RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+							End If
+						Else
+							RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+						End If
+					Else
+						RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+					End If
+					RefAdds = ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1)
+				End If
+			End With
+			TempList = GetVAListRegExp(RefAdds,ImportFunRefFrontChar32 & HexStr2RegExpPattern(.Reference(0).sOrgCode,1),SkipVal)
 			If CheckArray(TempList) = True Then
 				.lReferenceNum = UBound(TempList) + 1
 				ReDim Preserve strData.Reference(.lReferenceNum - 1) 'As REFERENCE_PROPERTIE
@@ -5026,9 +5113,9 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 					.Reference(i).lAddress = CLng(TempList(i)) + 2
 					.Reference(i).sOrgCode = .Reference(0).sOrgCode
 					If .Reference(i).lAddress < n Or .Reference(i).lAddress > m Then
-						MaxPos = SkipSection(File,.Reference(i).lAddress,n,m)
+						k = SkipSection(File,.Reference(i).lAddress,n,m)
 					End If
-					.Reference(i).inSecID = MaxPos
+					.Reference(i).inSecID = k
 					If ShowMsg > 0 Then
 						SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
 					ElseIf ShowMsg < 0 Then
@@ -6060,7 +6147,7 @@ End Function
 
 
 '获取文件的类型，PE 还是 MAC 还是非 PE 文件
-Private Function GetFileFormat(FilePath As String,ByVal Mode As Long,FileType As Integer) As String
+Private Function GetFileFormat(ByVal FilePath As String,ByVal Mode As Long,FileType As Integer) As String
 	Dim i As Long,n As Long,FN As FILE_IMAGE
 	On Error GoTo ExitFunction
 	FileType = 0
@@ -6224,7 +6311,7 @@ End Function
 'DisPlayFormat = False 十进制显示数值，否则十六进制显示数值
 Private Sub FileInfoView(File As FILE_PROPERTIE,ByVal DisPlayFormat As Boolean)
 	Dim i As Long,j As Long,n As Long,Stemp As Boolean
-	'On Error GoTo ErrHandle
+	On Error GoTo ErrHandle
 	If InStr(File.Magic,"MAC") Then Stemp = True
 	'MAC64的情况下，无法计算 64 位(8 个字节)的数值，只能用16进制显示
 	If File.Magic = "MAC64" Then
@@ -6637,9 +6724,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(58) = "版本 %v (构建 %b)\r\n" & _
 					"OS 版本: Windows XP/2000 或以上\r\n" & _
 					"Passolo 版本: Passolo 5.0 或以上\r\n" & _
-					"版权: 汉化新世纪\r\n授权: 免费软件\r\n" & _
+					"授权: 免费软件\r\n" & _
 					"网址: http://www.hanzify.org\r\n" & _
-					"作者: 汉化新世纪成员 - wanfu (2018)\r\n" & _
+					"作者: wanfu (2018 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(59) = "关于字符编码修改器"
 		MsgList(60) = "可执行文件 (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|所有文件 (*.*)|*.*||"
@@ -6804,9 +6891,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(58) = "セ %v (篶 %b)\r\n" & _
 					"OS セ: Windows XP/2000 ┪\r\n" & _
 					"Passolo セ: Passolo 5.0 ┪\r\n" & _
-					"舦: 簙て穝\r\n甭舦: 禣硁砰\r\n" & _
+					"甭舦: 禣硁砰\r\n" & _
 					"呼: http://www.hanzify.org\r\n" & _
-					": 簙て穝Θ - wanfu (2018)\r\n" & _
+					": wanfu (2018 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(59) = "闽じ絪絏э竟"
 		MsgList(60) = "磅︽郎 (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|┮Τ郎 (*.*)|*.*||"
@@ -6974,9 +7061,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(58) = "Version: %v (Build %b)\r\n" & _
 					"OS Version: Windows XP/2000 or higher\r\n" & _
 					"Passolo Version: Passolo 5.0 or higher\r\n" & _
-					"Copyright: Hanzify\r\nLicense: Freeware\r\n" & _
+					"License: Freeware\r\n" & _
 					"HomePage: http://www.hanzify.org\r\n" & _
-					"Author: Hanzify member - wanfu (2018)\r\n" & _
+					"Author: wanfu (2018 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(59) = "About Character Encoding Modifier"
 		MsgList(60) = "Executable File (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|All File (*.*)|*.*||"

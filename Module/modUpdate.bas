@@ -1,6 +1,6 @@
 Attribute VB_Name = "modUpdate"
 '' Update Module for PSlHardCodedString.bas
-'' (c) 2010-2019 by wanfu (Last modified on 2019.03.31
+'' (c) 2010-2019 by wanfu (Last modified on 2019.09.16
 
 '#Uses "modCommon.bas"
 
@@ -749,14 +749,17 @@ Private Function SetupNewVersion(ByVal FromPath As String,ByVal TargetDir As Str
 	If Right$(FromPath,1) <> "\" Then FromPath = FromPath & "\"
 
 	'检查是否存在相应的目录
-	If Dir$(FromPath & "*.lng") <> "" Or Dir$(FromPath & "*.ini") <> "" Then
+	If Dir$(FromPath & "*.lng") <> "" Or Dir$(FromPath & "*.ini") <> "" Or Dir$(FromPath & "*.dat") <> "" Then
 		If Dir$(TargetDir & "\Data\" & "*.*") = "" Then MkDir TargetDir & "\Data\"
 	End If
-	If Dir$(FromPath & "*.txt") <> "" Then
+	If Dir$(FromPath & "*.txt") <> "" Or Dir$(FromPath & "*.doc") <> "" Or Dir$(FromPath & "*.pdf") <> "" Then
 		If Dir$(TargetDir & "\Doc\" & "*.*") = "" Then MkDir TargetDir & "\Doc\"
 	End If
-	If Dir$(FromPath & "mod*.bas") <> "" Then
+	If Dir$(FromPath & "mod*.bas") <> "" Or Dir$(FromPath & "*.cls") <> "" Then
 		If Dir$(TargetDir & "\Module\" & "*.*") = "" Then MkDir TargetDir & "\Module\"
+	End If
+	If Dir$(FromPath & "*.chm") <> "" Or Dir$(FromPath & "*.hlp") <> "" Then
+		If Dir$(TargetDir & "\Help\" & "*.*") = "" Then MkDir TargetDir & "\Help\"
 	End If
 
 	'获取当前文件夹（不包括子文件夹）中的新版本文件列表
@@ -775,7 +778,7 @@ Private Function SetupNewVersion(ByVal FromPath As String,ByVal TargetDir As Str
 				Else
 					FileCopy FileList(i).FilePath,TargetDir & "\Module\" & FileList(i).sName
 				End If
-			Case "lng", "dat", "chm"
+			Case "lng", "dat"
 				FileCopy FileList(i).FilePath,TargetDir & "\Data\" & FileList(i).sName
 			Case "obm", "cls"
 				FileCopy FileList(i).FilePath,TargetDir & "\Module\" & FileList(i).sName
@@ -792,6 +795,13 @@ Private Function SetupNewVersion(ByVal FromPath As String,ByVal TargetDir As Str
 				Else
 					FileCopy FileList(i).FilePath,TargetDir & "\Data\" & FileList(i).sName
 				End If
+			Case "chm", "hlp"
+				FileCopy FileList(i).FilePath,TargetDir & "\Help\" & FileList(i).sName
+				If Dir$(TargetDir & "\Data\" & FileList(i).sName) <> "" Then
+					Kill TargetDir & "\Data\" & FileList(i).sName
+				End If
+			Case Is <> "rar"
+				FileCopy FileList(i).FilePath,TargetDir & "\Module\" & FileList(i).sName
 			End Select
 		Next i
 		If SetupNewVersion = True Then Exit Do

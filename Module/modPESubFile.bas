@@ -1,5 +1,5 @@
 '' PESubFile for Passolo
-'' (c) 2018 - 2019 by wanfu (Last modified on 2019.05.21)
+'' (c) 2018 - 2019 by wanfu (Last modified on 2019.11.08)
 
 '' Command Line Format: Command <FilePath>
 '' Command: Name of this Macros file
@@ -3024,7 +3024,7 @@ Private Function GetPEHeader(FN As FILE_IMAGE,File As FILE_PROPERTIE,ByVal Mode 
 
 	ExitFunction:
 	ReDim File.SecList(1)			'As SECTION_PROPERTIE
-	ReDim File.DataDirectory(15)	'As SUB_SECTION_PROPERTIE
+	ReDim File.DataDirectory(0)		'As SUB_SECTION_PROPERTIE
 	ReDim File.CLRList(0)			'As SUB_SECTION_PROPERTIE
 	ReDim File.StreamList(0)		'As SUB_SECTION_PROPERTIE
 	With File
@@ -3489,7 +3489,7 @@ Private Function GetMacHeader(FN As FILE_IMAGE,File As FILE_PROPERTIE,ByVal Mode
 
 	ExitFunction:
 	ReDim File.SecList(1)			'As SECTION_PROPERTIE
-	ReDim File.DataDirectory(15)	'As SECTION_PROPERTIE
+	ReDim File.DataDirectory(0)		'As SECTION_PROPERTIE
 	ReDim File.CLRList(0)			'As SECTION_PROPERTIE
 	ReDim File.StreamList(0)		'As SUB_SECTION_PROPERTIE
 	With File
@@ -4435,7 +4435,7 @@ End Function
 
 
 '获取文件的类型，PE 还是 MAC 还是非 PE 文件
-Private Function GetFileFormat(FilePath As String,ByVal Mode As Long,FileType As Integer) As String
+Private Function GetFileFormat(ByVal FilePath As String,ByVal Mode As Long,FileType As Integer) As String
 	Dim i As Long,n As Long,FN As FILE_IMAGE
 	On Error GoTo ExitFunction
 	FileType = 0
@@ -4689,7 +4689,7 @@ End Function
 'DisPlayFormat = False 十进制显示数值，否则十六进制显示数值
 Private Sub FileInfoView(File As FILE_PROPERTIE,ByVal DisPlayFormat As Boolean)
 	Dim i As Long,j As Long,n As Long,Stemp As Boolean
-	'On Error GoTo ErrHandle
+	On Error GoTo ErrHandle
 	If InStr(File.Magic,"MAC") Then Stemp = True
 	'MAC64的情况下，无法计算 64 位(8 个字节)的数值，只能用16进制显示
 	If File.Magic = "MAC64" Then
@@ -5278,9 +5278,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(26) = "版本 %v (构建 %b)\r\n" & _
 					"OS 版本: Windows XP/2000 或以上\r\n" & _
 					"Passolo 版本: Passolo 5.0 或以上\r\n" & _
-					"版权: 汉化新世纪\r\n授权: 免费软件\r\n" & _
+					"授权: 免费软件\r\n" & _
 					"网址: http://www.hanzify.org\r\n" & _
-					"作者: 汉化新世纪成员 - wanfu (2018)\r\n" & _
+					"作者: wanfu (2018 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(27) = "关于 PE 子文件管理器"
 		MsgList(28) = "可执行文件 (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|所有文件 (*.*)|*.*||"
@@ -5431,9 +5431,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(26) = "セ %v (篶 %b)\r\n" & _
 					"OS セ: Windows XP/2000 ┪\r\n" & _
 					"Passolo セ: Passolo 5.0 ┪\r\n" & _
-					"舦: 簙て穝\r\n甭舦: 禣硁砰\r\n" & _
+					"甭舦: 禣硁砰\r\n" & _
 					"呼: http://www.hanzify.org\r\n" & _
-					": 簙て穝Θ - wanfu (2018)\r\n" & _
+					": wanfu (2018 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(27) = "闽 PE 郎恨瞶竟"
 		MsgList(28) = "磅︽郎 (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|┮Τ郎 (*.*)|*.*||"
@@ -5586,9 +5586,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(26) = "Version: %v (Build %b)\r\n" & _
 					"OS Version: Windows XP/2000 or higher\r\n" & _
 					"Passolo Version: Passolo 5.0 or higher\r\n" & _
-					"Copyright: Hanzify\r\nLicense: Freeware\r\n" & _
+					"License: Freeware\r\n" & _
 					"HomePage: http://www.hanzify.org\r\n" & _
-					"Author: Hanzify member - wanfu (2018)\r\n" & _
+					"Author: wanfu (2018 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(27) = "About PE Subfile Manager"
 		MsgList(28) = "Executable File (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|All File (*.*)|*.*||"

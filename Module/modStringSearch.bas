@@ -1,6 +1,6 @@
 Attribute VB_Name = "modStringSearch"
 '' String Search Module for PSlHardCodedString.bas
-'' (c) 2015-2019 by wanfu (Last modified on 2019.4.9)
+'' (c) 2015-2019 by wanfu (Last modified on 2019.10.28)
 
 '#Uses "modCommon.bas"
 '#Uses "modPEInfo.bas"
@@ -249,6 +249,9 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			StringSearchDlgFunc = False
 			Exit Function
 		Case "HelpButton"
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1025,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("StringSearchHelp")
 		Case "FindStrButton"
 			GetHistory(TempList,"FindStrings","StringSearchDlg")
@@ -262,6 +265,9 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -712,12 +718,7 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				If i < 0 Then Exit Function
 				File.FilePath = SearchSet(17)
 				If GetFileInfo(File.FilePath,File) = False Then Exit Function
-				Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-				Case "PE",""
-					GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-				Case "MAC"
-					GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-				End Select
+				GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType)
 				Call FileInfoView(File,FreeByteList,i,0,StrToLong(Selected(16)))
 			End Select
 		Case "ViewStrInfoButton"
@@ -757,18 +758,22 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				TempList = ReSplit(SearchResult(k),vbNullChar)
 				If ArrayComp(TempList,SearchSet,"0-8,15") = False Then
 					j = DlgListBoxArray("FileResultList")
-					TempList = ReSplit(SearchResult(j + k),TextJoinStr)
-					n = UBound(TempList) - 9
-					DlgText "FileResultText",Replace$(Replace$(MsgList(54),"%n",CStr$(n)),"%t",Format$(DateAdd("s",0,0),MsgList(49)))
-					'保存结果为临时文件
-					If WriteToFile(SearchSet(17) & ".xls",SearchResult(j + k),"unicodeFFFE") = False Then
-						Exit Function
-					End If
-					'打开临时文件查看信息
-					ReDim FileDataList(0) As String
-					FileDataList(0) = SearchSet(17) & ".xls" & JoinStr & "unicodeFFFE"
-					If OpenFile(SearchSet(17) & ".xls",FileDataList,i,False) = True Then
-						If i = 3 Then WriteSettings("Tools")
+					If SearchResult(j + k) <> "" Then
+						TempList = ReSplit(SearchResult(j + k),TextJoinStr)
+						n = UBound(TempList) - 9
+						DlgText "FileResultText",Replace$(Replace$(MsgList(54),"%n",CStr$(n)),"%t",Format$(DateAdd("s",0,0),MsgList(49)))
+						'保存结果为临时文件
+						If WriteToFile(SearchSet(17) & ".xls",SearchResult(j + k),"unicodeFFFE") = False Then
+							Exit Function
+						End If
+						'打开临时文件查看信息
+						ReDim FileDataList(0) As String
+						FileDataList(0) = SearchSet(17) & ".xls" & JoinStr & "unicodeFFFE"
+						If OpenFile(SearchSet(17) & ".xls",FileDataList,i,False) = True Then
+							If i = 3 Then WriteSettings("Tools")
+						End If
+					Else
+						MsgBox MsgList(47),vbOkOnly+vbInformation,MsgList(34)
 					End If
 					Exit Function
 				End If
@@ -875,6 +880,7 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			If Max < 1 Then
 				'隐藏主窗口中的取消操作按钮，启用 Esc 键的退出响应
 				Call ShowButton(StopHwnd,VK_ESCAPE,False)
+				MsgBox MsgList(47),vbOkOnly+vbInformation,MsgList(34)
 				Exit Function
 			End If
 			Set RegEx = Nothing
@@ -1034,12 +1040,18 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 	Case 6 ' 函数快捷键
 		Select Case SuppValue
 		Case 1
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1025,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("StringSearchHelp")
 		Case 2
 			If getMsgList(UIDataList,MsgList,"RegExpRuleTip",1) = False Then Exit Function
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -1082,12 +1094,7 @@ Private Function StringSearchDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 				If i < 0 Then Exit Function
 				File.FilePath = SearchSet(17)
 				If GetFileInfo(File.FilePath,File) = False Then Exit Function
-				Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-				Case "PE",""
-					GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-				Case "MAC"
-					GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-				End Select
+				GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType)
 				Call FileInfoView(File,FreeByteList,i,0,StrToLong(Selected(16)))
 			End Select
 		End Select
@@ -1109,6 +1116,7 @@ Private Function GetFiles(ByVal Folder As String,ConditionList() As String,gFile
 	ReDim gFiles(m) As String
 	FindList = ReSplit(UCase$(ConditionList(0)),";",-1)
 	SkipList = ReSplit(UCase$(ConditionList(1)),";",-1)
+	On Error Resume Next
 	File = Dir$(Folder & "*.*",vbHidden)
 	Do While File <> ""
 		If GetAttr(Folder & File) And vbDirectory Then GoTo NextNo
@@ -1177,6 +1185,7 @@ Private Function FindSubFiles(ByVal Folder As String,ConditionList() As String,g
 	SkipList = ReSplit(UCase$(ConditionList(1)),";",-1)
 	FolderList = ReSplit(UCase$(ConditionList(5)),";",-1)
 	subFolders(0) = Folder
+	On Error Resume Next
 	Do
 		Folder = subFolders(j)
 		File = Dir$(Folder & "*.*",vbDirectory Or vbHidden)
@@ -1303,12 +1312,7 @@ Private Function FindStringCount(DataList() As FindStrList,ByVal RegEx As Object
 		Mode = LoadFile(.FilePath,FN,0,0,0,Mode,0,0)
 		If Mode < -1 Then Exit Function
 		If ShowMsg > 0 Then Temp = GetTextBoxString(ShowMsg) & " "
-		Select Case GetFileFormat(File.FilePath,StrToLong(Selected(1)),File.FileType)
-		Case "PE","NET",""
-			GetPEHeaders(File.FilePath,File,StrToLong(Selected(1)))
-		Case "MAC"
-			GetMacHeaders(File.FilePath,File,StrToLong(Selected(1)))
-		End Select
+		GetHeaders(File.FilePath,File,StrToLong(Selected(1)),File.FileType)
 		Max = 15
 		ReDim DataList(Max) As FindStrList
 		For j = 0 To .MaxSecIndex
@@ -1404,4 +1408,15 @@ Private Function StopProcess(ByVal ButtonHwnd As Long,ByVal KeyHwnd As Long) As 
 	'禁用 Esc 键，因主对话框会响应而退出
 	EnableWindow KeyHwnd, True
 	StopProcess = True
+End Function
+
+
+'获取文件及子文件的数据结构信息
+Private Function GetHeaders(ByVal strFilePath As String,File As FILE_PROPERTIE,ByVal Mode As Long,FileType As Integer) As Boolean
+	Select Case GetFileFormat(File.FilePath,Mode,FileType)
+	Case "PE","NET",""
+		GetHeaders = GetPEHeaders(File.FilePath,File,Mode)
+	Case "MAC"
+		GetHeaders = GetMacHeaders(File.FilePath,File,Mode)
+	End Select
 End Function

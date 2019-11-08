@@ -1,6 +1,6 @@
 Attribute VB_Name = "modPEInfo"
 '' File Information Module for PSlHardCodedString.bas
-'' (c) 2015-2019 by wanfu (Last modified on 2019.05.18)
+'' (c) 2015-2019 by wanfu (Last modified on 2019.11.08)
 
 '#Uses "modCommon.bas"
 
@@ -789,7 +789,7 @@ Private Function GetPEHeader(FN As FILE_IMAGE,File As FILE_PROPERTIE,ByVal Mode 
 
 	ExitFunction:
 	ReDim File.SecList(1)			'As SECTION_PROPERTIE
-	ReDim File.DataDirectory(15)		'As SUB_SECTION_PROPERTIE
+	ReDim File.DataDirectory(0)		'As SUB_SECTION_PROPERTIE
 	ReDim File.CLRList(0)			'As SUB_SECTION_PROPERTIE
 	ReDim File.StreamList(0)		'As SUB_SECTION_PROPERTIE
 	With File
@@ -1117,7 +1117,7 @@ Public Function AddPESectionSize(trnFile As FILE_PROPERTIE,AddSecSize() As FREE_
 				WriteMemory FN.MappedAddress + DosHeader.lPointerToPEHeader + Len(FileHeader),OptionalHeader32,Len(OptionalHeader32)
 			End Select
 		End If
-	Case "PE64","NET4"
+	Case "PE64","NET64"
 		PEBitType = PE_BIT_TYPE64
 		If AddRVA > 0 Then
 			'修改文件对齐值，以减少文件大小

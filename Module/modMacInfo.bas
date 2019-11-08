@@ -1,7 +1,7 @@
 Attribute VB_Name = "modMacInfo"
 
 '' File Information Module for PSlHardCodedString.bas
-'' (c) 2015-2019 by wanfu (Last modified on 2019.03.15)
+'' (c) 2015-2019 by wanfu (Last modified on 2019.11.08)
 
 '#Uses "modCommon.bas"
 
@@ -619,7 +619,7 @@ Private Function GetMacHeader(FN As FILE_IMAGE,File As FILE_PROPERTIE,ByVal Mode
 
 	ExitFunction:
 	ReDim File.SecList(1)			'As SECTION_PROPERTIE
-	ReDim File.DataDirectory(15)		'As SECTION_PROPERTIE
+	ReDim File.DataDirectory(0)		'As SECTION_PROPERTIE
 	ReDim File.CLRList(0)			'As SECTION_PROPERTIE
 	ReDim File.StreamList(0)		'As SUB_SECTION_PROPERTIE
 	With File

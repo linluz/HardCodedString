@@ -1,5 +1,5 @@
 '' Reference Search for Passolo
-'' (c) 2015 - 2019 by wanfu (Last modified on 2019.03.18)
+'' (c) 2015 - 2019 by wanfu (Last modified on 2019.11.08)
 
 '' Command Line Format: Command <FilePath> <-add:Address> <-lng:Hex Language Code>
 '' Command: Name of this Macros file
@@ -11,8 +11,8 @@
 
 Option Explicit
 
-Private Const Version = "2019.03.18"
-Private Const Build = "190318"
+Private Const Version = "2019.11.08"
+Private Const Build = "191108"
 Private Const JoinStr = vbFormFeed  'vbBack
 Private Const TextJoinStr = vbCrLf
 Private Const RefJoinStr = "|"
@@ -1014,6 +1014,7 @@ End Type
 Private Type STRING_SUB_PROPERTIE
 	lStartAddress	As Long		'字串的开始地址
 	inSectionID		As Integer	'字串所在节的索引号
+	inSubSecID			As Integer	'字串所在节的子节索引号
 	lReferenceNum	As Long		'引用次数
 	GetRefState		As Integer	'获取字串引用列表的状态，0 = 未获取，1 = 已获取
 	Reference()		As REFERENCE_PROPERTIE
@@ -1190,11 +1191,15 @@ Private Function MainDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			DlgListBoxArray "SecNameList",TempList()
 			Data.inSectionID = SkipSection(File,Data.lStartAddress,0,0,1)
 			If Data.inSectionID > -1 Then
+				Data.inSubSecID = SkipSubSection(File.SecList(Data.inSectionID),Data.lStartAddress,0,0)
 				DlgValue "SecNameList",Data.inSectionID
+				DlgEnable "SearchButton",IIf(File.Magic = "",False,True)
 			ElseIf File.SecList(File.MaxSecIndex).lSizeOfRawData > 0 Then
+				Data.inSubSecID = -1
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID
 				DlgEnable "SearchButton",False
 			Else
+				Data.inSubSecID = -1
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID - 1
 				DlgEnable "SearchButton",False
 			End If
@@ -1261,12 +1266,15 @@ Private Function MainDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			DlgListBoxArray "SecNameList",TempList()
 			Data.inSectionID = SkipSection(File,Data.lStartAddress,0,0,1)
 			If Data.inSectionID > -1 Then
+				Data.inSubSecID = SkipSubSection(File.SecList(Data.inSectionID),Data.lStartAddress,0,0)
 				DlgValue "SecNameList",Data.inSectionID
-				DlgEnable "SearchButton",True
+				DlgEnable "SearchButton",IIf(File.Magic = "",False,True)
 			ElseIf File.SecList(File.MaxSecIndex).lSizeOfRawData > 0 Then
+				Data.inSubSecID = -1
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID
 				DlgEnable "SearchButton",False
 			Else
+				Data.inSubSecID = -1
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID - 1
 				DlgEnable "SearchButton",False
 			End If
@@ -1308,7 +1316,7 @@ Private Function MainDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Data.inSectionID = SkipSection(File,Data.lStartAddress,0,0,1)
 			If Data.inSectionID > -1 Then
 				DlgValue "SecNameList",Data.inSectionID
-				DlgEnable "SearchButton",True
+				DlgEnable "SearchButton",IIf(File.Magic = "",False,True)
 			ElseIf File.SecList(File.MaxSecIndex).lSizeOfRawData > 0 Then
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID
 				DlgEnable "SearchButton",False
@@ -1346,7 +1354,7 @@ Private Function MainDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Call GetVARefList(File,FN,Data,"",1,Mode,0)
 			DlgText "ShowTextBox",Reference2Str(File,Data)
 			DlgText "ShowText",Replace$(MsgList(22),"%s",CStr$(Data.lReferenceNum))
-			DlgEnable "SearchButton",True
+			DlgEnable "SearchButton",IIf(File.Magic = "",False,True)
 			DlgEnable "CopyButton",IIf(DlgText("ShowTextBox") = "",False,True)
 		Case "SearchButton"
 			If DlgText("FilePathBox") = "" Then Exit Function
@@ -1481,7 +1489,7 @@ Private Function MainDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Data.inSectionID = SkipSection(File,Data.lStartAddress,0,0,1)
 			If Data.inSectionID > -1 Then
 				DlgValue "SecNameList",Data.inSectionID
-				DlgEnable "SearchButton",True
+				DlgEnable "SearchButton",IIf(File.Magic = "",False,True)
 			ElseIf File.SecList(File.MaxSecIndex).lSizeOfRawData > 0 Then
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID
 				DlgEnable "SearchButton",False
@@ -1543,7 +1551,7 @@ Private Function MainDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Data.inSectionID = SkipSection(File,Data.lStartAddress,0,0,1)
 			If Data.inSectionID > -1 Then
 				DlgValue "SecNameList",Data.inSectionID
-				DlgEnable "SearchButton",True
+				DlgEnable "SearchButton",IIf(File.Magic = "",False,True)
 			ElseIf File.SecList(File.MaxSecIndex).lSizeOfRawData > 0 Then
 				DlgValue "SecNameList",File.MaxSecIndex - Data.inSectionID
 				DlgEnable "SearchButton",False
@@ -1721,7 +1729,7 @@ Private Function getNotNullByteRegExp(FN As FILE_IMAGE,ByVal Offset As Long,ByVa
 		.IgnoreCase = False
 		.Pattern = "[^\x00]+?"
 		Do
-			endPos = IIf(Offset + 512 < Max,Offset + 512,Max)
+			EndPos = IIf(Offset + 512 < Max,Offset + 512,Max)
 			Set Matches = .Execute(ByteToString(GetBytes(FN,endPos - Offset + 1,Offset,Mode),CP_ISOLATIN1))
 			If Matches.Count > 0 Then
 				Offset = Offset + Matches(0).FirstIndex
@@ -2875,6 +2883,42 @@ Private Function SkipSection(File As FILE_PROPERTIE,ByVal Offset As Long,MinVal 
 End Function
 
 
+'获取子文件节索引号
+'Mode = False 检查偏移地址
+'Mode = True 检查相对虚拟地址
+'返回文件节索引号、MinVal、MaxVal 值
+Private Function SkipSubSection(Sec As SECTION_PROPERTIE,ByVal Offset As Long,MinVal As Long,MaxVal As Long,Optional ByVal Mode As Boolean) As Long
+	Dim i As Integer
+	SkipSubSection = -1
+	If Sec.SubSecs = 0 Then Exit Function
+	MinVal = 0: MaxVal = 0
+	If Offset < 0 Then Exit Function
+	If Mode = False Then
+		For i = 0 To Sec.SubSecs - 1
+			With Sec.SubSecList(i)
+				If Offset >= .lPointerToRawData And Offset < .lPointerToRawData + .lSizeOfRawData Then
+					SkipSubSection = i
+					MinVal = .lPointerToRawData
+					MaxVal = MinVal + .lSizeOfRawData - 1
+					Exit For
+				End If
+			End With
+		Next i
+	Else
+		For i = 0 To Sec.SubSecs - 1
+			With Sec.SubSecList(i)
+				If Offset >= .lVirtualAddress And Offset < .lVirtualAddress + .lVirtualSize Then
+					SkipSubSection = i
+					MinVal = .lVirtualAddress
+					MaxVal = MinVal + .lVirtualSize - 1
+					Exit For
+				End If
+			End With
+		Next i
+	End If
+End Function
+
+
 '获取各种文件头的索引号及地址 (这里的地址都已转换为偏移地址)
 'Mode = 0 时，仅返回 RVA 所在目录的索引号
 'Mode = 1 时，RVA = RVA 所在目录的最大地址 + 1，SkipVal = 比 RVA 大的目录最小地址
@@ -2883,6 +2927,7 @@ End Function
 Private Function SkipHeader(File As FILE_PROPERTIE,RVA As Long,Optional SkipVal As Long,Optional ByVal Mode As Long,Optional ByVal fType As Long) As Long
 	Dim i As Integer,j As Integer,EndPos As Long
 	SkipHeader = -1
+	If File.DataDirs = 0 Then Exit Function
 	i = 15 + IIf(File.LangType = NET_FILE_SIGNATURE,7 + File.NetStreams,0)
 	ReDim List(i) As IMAGE_DATA_DIRECTORY
 	With File
@@ -3261,6 +3306,114 @@ Private Function UnLoadFile(LoadedImage As FILE_IMAGE,ByVal SizeOfFile As Long,B
 End Function
 
 
+'查找 .NET 字串引用地址列表
+'fType = 0 查找来源的引用列表和引用代码
+'fType = 1 查找翻译的引用列表和引用代码，如果 RefAdds 为空，则按照原来引用地址计算引用代码
+'fType = 2 查找翻译的引用列表和引用代码，如果 RefAdds 为空，则初始化，清空引用列表
+'fType > 2 初始化，清空翻译引用列表和引用代码
+Private Function GetNETVARefList(File As FILE_PROPERTIE,FN As Variant,strData As STRING_SUB_PROPERTIE,ByVal StrTypeLength As Integer, _
+				ByVal RefAdds As String,ByVal fType As Long,ByVal Mode As Long,Optional ByVal ShowMsg As Long) As Long
+	Dim i As Long,j As Long,m As Long,n As Long
+	Dim Msg As String,TempList() As String
+	On Error GoTo ExitFunction
+	If File.Magic = "" Then GoTo ExitFunction
+	If fType > 2 Then GoTo ExitFunction
+	If ShowMsg > 0 Then
+		Msg = GetTextBoxString(ShowMsg) & " "
+	ElseIf ShowMsg < 0 Then
+		ReDim TempList(PSL.OutputWnd(0).LineCount - 1) As String
+		For i = 1 To PSL.OutputWnd(0).LineCount
+			TempList(i - 1) = PSL.OutputWnd(0).Text(i)
+		Next i
+		Msg = StrListJoin(TempList,vbCrLf) & " "
+	End If
+	With strData
+		'按原来翻译开始地址的引用代码获取新地址的引用代码列表
+		If fType < 0 Then
+			'If RefAdds <> "" Then Call getRefList(strData,ReSplit(RefAdds,RefJoinStr),TempList,True)
+			If .lReferenceNum = 0 Then GoTo ExitFunction
+			j = File.StreamList(File.USStreamID).lPointerToRawData
+			.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress - j - StrTypeLength),6) & "70"
+			For i = 0 To .lReferenceNum - 1
+				.Reference(i).sCode = .Reference(0).sCode
+			Next i
+			.GetRefState = 1
+			Exit Function
+		End If
+		If fType = 0 Then
+			'获取过引用的退出程序
+			If .GetRefState > 0 Then Exit Function
+			.lReferenceNum = 0
+			ReDim strData.Reference(0) 'As REFERENCE_PROPERTIE
+			j = File.StreamList(File.USStreamID).lPointerToRawData
+			.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress - j - StrTypeLength),6) & "70"
+			i = File.SecList(File.MinSecID).lPointerToRawData
+			If RefAdds = "" Then
+				j = File.StreamList(File.USStreamID).lPointerToRawData
+				RefAdds = ByteToString(GetBytes(FN,j - i + 1,i,Mode),CP_ISOLATIN1)
+			End If
+			TempList = GetVAListRegExp(RefAdds,"\x72" & HexStr2RegExpPattern(.Reference(0).sCode,1),i)
+			If CheckArray(TempList) = True Then
+				.lReferenceNum = UBound(TempList) + 1
+				ReDim Preserve strData.Reference(.lReferenceNum - 1) 'As REFERENCE_PROPERTIE
+				For i = 0 To .lReferenceNum - 1
+					.Reference(i).lAddress = CLng(TempList(i)) + 1
+					.Reference(i).sCode = .Reference(0).sCode
+					If .Reference(i).lAddress < n Or .Reference(i).lAddress > m Then
+						j = SkipSection(File,.Reference(i).lAddress,n,m)
+					End If
+					.Reference(i).inSecID = j
+					If ShowMsg > 0 Then
+						SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
+					ElseIf ShowMsg < 0 Then
+						PSL.OutputWnd(0).Clear
+						PSL.Output Msg & Format$(i / .lReferenceNum,"#%")
+					End If
+				Next i
+			End If
+			.GetRefState = 1
+		ElseIf RefAdds <> "" Or (.lReferenceNum > 0 And fType < 2) Then
+			If RefAdds <> "" Then Call GetRefList(strData,ReSplit(RefAdds,RefJoinStr),TempList,True)
+			If .lReferenceNum > 0 Then
+				j = File.StreamList(File.USStreamID).lPointerToRawData
+				.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress - j - StrTypeLength),6) & "70"
+				For i = 0 To .lReferenceNum - 1
+					.Reference(i).sCode = .Reference(0).sCode
+					If ShowMsg > 0 Then
+						SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
+					ElseIf ShowMsg < 0 Then
+						PSL.OutputWnd(0).Clear
+						PSL.Output Msg & Format$(i / .lReferenceNum,"#%")
+					End If
+				Next i
+			End If
+			.GetRefState = 1
+		Else
+			GoTo ExitFunction
+		End If
+	End With
+	GetNETVARefList = strData.lReferenceNum
+	If ShowMsg > 0 Then
+		SetTextBoxString ShowMsg,Msg & "100%"
+	ElseIf ShowMsg < 0 Then
+		PSL.OutputWnd(0).Clear
+		PSL.Output Msg & "100%"
+	End If
+	Exit Function
+	'退出函数
+	ExitFunction:
+	ReDim Preserve strData.Reference(0) 'As REFERENCE_PROPERTIE
+	strData.lReferenceNum = 0
+	strData.GetRefState = 0
+	If ShowMsg > 0 Then
+		SetTextBoxString ShowMsg,Msg & "100%"
+	ElseIf ShowMsg < 0 Then
+		PSL.OutputWnd(0).Clear
+		PSL.Output Msg & "100%"
+	End If
+End Function
+
+
 '查找引用代码和引用列表
 'fType < 0 按现有的引用地址列表，查找翻译的引用代码列表，fType 为原来的翻译开始地址
 'fType = 0 查找来源的引用列表和引用代码
@@ -3277,9 +3430,31 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 	If File.Magic = "" Then GoTo ExitFunction
 	If fType > 2 Then GoTo ExitFunction
 	With strData
+	If File.LangType = NET_FILE_SIGNATURE And File.USStreamID > -1 Then
+		i = File.StreamList(File.USStreamID).lPointerToRawData
+		j = i + File.StreamList(File.USStreamID).lSizeOfRawData - 1
+		If .lStartAddress >= i And .lStartAddress <= j Then
+			i = .lStartAddress
+			Do
+				i = i - 1
+				If i < i Then Exit Do
+				j = GetByte(FN,i,Mode)
+				n = n + 1
+			Loop Until j = 0 Or j = 1
+			i = i + 1
+			i = CorSigUncompressData(FN,i,j,Mode)
+			If j > 0 And i + 1 = n Then
+				GetVARefList = GetNETVARefList(File,FN,strData,i,RefAdds,fType,Mode,ShowMsg)
+			End If
+			Exit Function
+		End If
+	End If
 	If fType > -1 Then
 		If .inSectionID < 0 Then .inSectionID = SkipSection(File,.lStartAddress,0,0)
 		If .inSectionID < 0 Then GoTo ExitFunction
+		If File.SecList(.inSectionID).SubSecs > 0 Then
+			If .inSubSecID < 0 Then .inSubSecID = SkipSubSection(File.SecList(.inSectionID),.lStartAddress,0,0)
+		End If
 		If ShowMsg > 0 Then
 			Msg = GetTextBoxString(ShowMsg) & " "
 		ElseIf ShowMsg < 0 Then
@@ -3392,13 +3567,23 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 		End If
 		If .inSectionID > File.MaxSecIndex - 1 Then GoTo ExitFunction
 		'获取字串的虚拟地址
-		With File.SecList(.inSectionID)
-			If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
-				VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
-			Else
-				GoTo ExitFunction
-			End If
-		End With
+		If File.SecList(.inSectionID).SubSecs > 0 Then
+			With File.SecList(.inSectionID).SubSecList(.inSubSecID)
+				If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
+					VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
+				Else
+					GoTo ExitFunction
+				End If
+			End With
+		Else
+			With File.SecList(.inSectionID)
+				If strData.lStartAddress >= .lPointerToRawData And strData.lStartAddress < .lPointerToRawData + .lSizeOfRawData Then
+					VRK = .lVirtualAddress - .lPointerToRawData + File.ImageBase
+				Else
+					GoTo ExitFunction
+				End If
+			End With
+		End If
 		'获取引用地址及引用代码列表
 		If fType = 0 Then
 			'获取过引用的退出程序
@@ -3406,25 +3591,27 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 			If SkipHeader(File,strData.lStartAddress,0,0) > -1 Then GoTo ExitFunction
 			With File
 				SkipVal = .SecList(.MinSecID).lPointerToRawData
-				If .DataDirectory(2).lPointerToRawData > 0 Then
-					If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
-						RSize = .DataDirectory(2).lPointerToRawData - 1
+				If RefAdds = "" Then
+					If .DataDirs > 0 Then
+						If .DataDirectory(2).lPointerToRawData > 0 Then
+							If SkipSection(File,.DataDirectory(2).lPointerToRawData,0,0) > -1 Then
+								RSize = .DataDirectory(2).lPointerToRawData - 1
+							Else
+								RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+							End If
+						Else
+							RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+						End If
 					Else
 						RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
 					End If
-				Else
-					RSize = .SecList(.MaxSecID).lPointerToRawData + .SecList(.MaxSecID).lSizeOfRawData - 1
+					RefAdds = ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1)
 				End If
 			End With
 			.lReferenceNum = 0
 			ReDim strData.Reference(0) 'As REFERENCE_PROPERTIE
 			.Reference(0).sCode = ReverseHexCode(Hex$(.lStartAddress + VRK),8)
-			'If Mode = 0 Then
-			'	TempList = GetVAList(FN.ImageByte,Val2Bytes(.lStartAddress + VRK,4),SkipVal,RSize)
-			'Else
-				TempList = GetVAListRegExp(ByteToString(GetBytes(FN,RSize - SkipVal + 1,SkipVal,Mode),CP_ISOLATIN1), _
-							HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
-			'End If
+			TempList = GetVAListRegExp(RefAdds,HexStr2RegExpPattern(.Reference(0).sCode,1),SkipVal)
 			If CheckArray(TempList) = True Then
 				.lReferenceNum = UBound(TempList) + 1
 				ReDim Preserve strData.Reference(.lReferenceNum - 1) 'As REFERENCE_PROPERTIE
@@ -3433,9 +3620,9 @@ Private Function GetVARefList(File As FILE_PROPERTIE,FN As Variant,strData As ST
 					.Reference(i).lAddress = CLng(TempList(i))
 					.Reference(i).sCode = .Reference(0).sCode
 					If .Reference(i).lAddress < n Or .Reference(i).lAddress > m Then
-						MaxPos = SkipSection(File,.Reference(i).lAddress,n,m)
+						k = SkipSection(File,.Reference(i).lAddress,n,m)
 					End If
-					.Reference(i).inSecID = MaxPos
+					.Reference(i).inSecID = k
 					If ShowMsg > 0 Then
 						SetTextBoxString ShowMsg,Msg & Format$(i / .lReferenceNum,"#%")
 					ElseIf ShowMsg < 0 Then
@@ -3747,7 +3934,7 @@ End Function
 
 '引用数据转字串
 Private Function Reference2Str(File As FILE_PROPERTIE,strData As STRING_SUB_PROPERTIE) As String
-	Dim i As Long,n As Long,Temp As String,SecList() As String
+	Dim i As Long,k As Long,n As Long,Temp As String,SecList() As String
 	On Error Resume Next
 	If strData.lReferenceNum = 0 Then
 		Reference2Str = MsgList(30)
@@ -3766,7 +3953,12 @@ Private Function Reference2Str(File As FILE_PROPERTIE,strData As STRING_SUB_PROP
 			TempList(i + 3) = Replace$(TempList(i + 3),"%da",Format$(.Reference(i).lAddress,Temp))
 			TempList(i + 3) = Replace$(TempList(i + 3),"%ha",Right$(Temp & Hex$(.Reference(i).lAddress),n))
 			TempList(i + 3) = Replace$(TempList(i + 3),"%sc",SecList(SkipSection(File,.Reference(i).lAddress,0,0,1)))
-			TempList(i + 3) = Replace$(TempList(i + 3),"%dc",MsgList(42 + SkipHeader(File,.Reference(i).lAddress) + 1))
+			k = SkipHeader(File,.Reference(i).lAddress)
+			If k < 16 Then
+				TempList(i + 3) = Replace$(TempList(i + 3),"%dc",MsgList(42 + k + 1))
+			Else
+				TempList(i + 3) = Replace$(TempList(i + 3),"%dc",MsgList(140 + k - 22))
+			End If
 			TempList(i + 3) = Replace$(TempList(i + 3),"%rc",strData.Reference(i).sCode)
 		Next i
 	End With
@@ -4213,7 +4405,7 @@ End Function
 
 
 '获取文件的类型，PE 还是 MAC 还是非 PE 文件
-Private Function GetFileFormat(FilePath As String,ByVal Mode As Long,FileType As Integer) As String
+Private Function GetFileFormat(ByVal FilePath As String,ByVal Mode As Long,FileType As Integer) As String
 	Dim i As Long,n As Long,FN As FILE_IMAGE
 	On Error GoTo ExitFunction
 	FileType = 0
@@ -4377,7 +4569,7 @@ End Function
 'DisPlayFormat = False 十进制显示数值，否则十六进制显示数值
 Private Sub FileInfoView(File As FILE_PROPERTIE,ByVal DisPlayFormat As Boolean)
 	Dim i As Long,j As Long,n As Long,Stemp As Boolean
-	'On Error GoTo ErrHandle
+	On Error GoTo ErrHandle
 	If InStr(File.Magic,"MAC") Then Stemp = True
 	'MAC64的情况下，无法计算 64 位(8 个字节)的数值，只能用16进制显示
 	If File.Magic = "MAC64" Then
@@ -4697,6 +4889,52 @@ Private Function ValToStr(ByVal DecVal As Long,Optional ByVal MaxVal As Long,Opt
 End Function
 
 
+'位左移
+Private Function SHL(nSource As Long, n As Byte) As Double
+	On Error GoTo ExitFunction:
+	SHL = nSource * 2 ^ n
+	ExitFunction:
+End Function
+
+
+'Blob 流长度解压缩
+'返回 CorSigUncompressData = 压缩长度，Length = 除长度标识符外的字节长度（包括是否包含 > &H7F 字符标识符）
+'每个二进制数据块头，都有1个长度数据块，通过移位运算，计算出长度数据块的实际长度
+'如果第一个字节最高位为0，则此数据块长度为1个字节
+'如果第一个字节最高位为10，则此数据块长度为2个字节
+'如果第一个字节最高位为110，则此数据块长度为4个字节
+Private Function CorSigUncompressData(FN As Variant,ByVal Index As Long,Length As Long,ByVal Mode As Long) As Integer
+	Dim Bytes() As Byte
+	Length = 0
+	Bytes = GetBytes(FN,4,Index,Mode)
+	If (Bytes(0) And &H80) = 0 Then
+		CorSigUncompressData = 1
+		Length = Bytes(0)
+	ElseIf (Bytes(0) And &HC0) = &H80 Then
+		CorSigUncompressData = 2
+		Length = SHL((Bytes(0) And &H3F),8) Or Bytes(1)
+	ElseIf (Bytes(0) And &HE0) = &HC0 Then
+		CorSigUncompressData = 4
+		Length = SHL((Bytes(0) And &H1F),24) Or SHL(CLng(Bytes(1)),16) Or SHL(CLng(Bytes(2)),8) Or Bytes(3)
+	End If
+	Exit Function
+
+    If Bytes(0) = 0 Then
+		CorSigUncompressData = 1
+		Length = 0
+	ElseIf ((Bytes(0) And &HC0) = &HC0) And ((Bytes(0) And &H20) = 0) Then
+		CorSigUncompressData = 4
+		Length = SHL((Bytes(0) And &H1F),24) Or SHL(CLng(Bytes(1)),16) Or SHL(CLng(Bytes(2)),8) Or Bytes(3)
+	ElseIf ((Bytes(0) And &H80) = &H80) And ((Bytes(0) And &H40) = 0) Then
+		CorSigUncompressData = 2
+		Length = SHL((Bytes(0) And &H3F),8) Or Bytes(1)
+	Else
+		CorSigUncompressData = 1
+		Length = Bytes(0) And &H7F
+	End If
+End Function
+
+
 '消息字符串
 Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boolean
 	Dim i As Integer
@@ -4743,9 +4981,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(31) = "版本 %v (构建 %b)\r\n" & _
 					"OS 版本: Windows XP/2000 或以上\r\n" & _
 					"Passolo 版本: Passolo 5.0 或以上\r\n" & _
-					"版权: 汉化新世纪\r\n授权: 免费软件\r\n" & _
+					"授权: 免费软件\r\n" & _
 					"网址: http://www.hanzify.org\r\n" & _
-					"作者: 汉化新世纪成员 - wanfu (2015 - 2018)\r\n" & _
+					"作者: wanfu (2015 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(32) = "关于引用搜索"
 		MsgList(33) = "可执行文件 (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|所有文件 (*.*)|*.*||"
@@ -4886,9 +5124,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(31) = "セ %v (篶 %b)\r\n" & _
 					"OS セ: Windows XP/2000 ┪\r\n" & _
 					"Passolo セ: Passolo 5.0 ┪\r\n" & _
-					"舦: 簙て穝\r\n甭舦: 禣硁砰\r\n" & _
+					"甭舦: 禣硁砰\r\n" & _
 					"呼: http://www.hanzify.org\r\n" & _
-					": 簙て穝Θ - wanfu (2015 - 2018)\r\n" & _
+					": wanfu (2015 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(32) = "闽把酚穓"
 		MsgList(33) = "磅︽郎 (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|┮Τ郎 (*.*)|*.*||"
@@ -5031,9 +5269,9 @@ Private Function GetMsgList(MsgList() As String,ByVal Language As String) As Boo
 		MsgList(31) = "Version: %v (Build %b)\r\n" & _
 					"OS Version: Windows XP/2000 or higher\r\n" & _
 					"Passolo Version: Passolo 5.0 or higher\r\n" & _
-					"Copyright: Hanzify\r\nLicense: Freeware\r\n" & _
+					"License: Freeware\r\n" & _
 					"HomePage: http://www.hanzify.org\r\n" & _
-					"Author: Hanzify member - wanfu (2015 - 2018)\r\n" & _
+					"Author: wanfu (2015 - 2019)\r\n" & _
 					"E-mail: z_shangyi@163.com"
 		MsgList(32) = "About Reference Search"
 		MsgList(33) = "Executable file (*.exe;*.dll;*.ocx)|*.exe;*.dll;*.ocx|All file (*.*)|*.*||"

@@ -1,11 +1,11 @@
 Attribute VB_Name = "modCommon"
 '' Common Module for PSlHardCodedString.bas
-'' (c) 2010-2019 by wanfu (Last modified on 2019.06.23
+'' (c) 2010-2019 by wanfu (Last modified on 2019.11.08
 
 Option Explicit
 
-Public Const Version = "2019.06.23"
-Public Const Build = "190623
+Public Const Version = "2019.11.08"
+Public Const Build = "191108"
 Public Const ToUpdateDataVersion = "2012.10.25"
 Public Const ToUpdateStrTypeVersion = "2015.02.13"
 Public Const ToUpdateRuleVersion = "2015.08.18"
@@ -43,6 +43,8 @@ Public Const AppName = "PSLHardCodedString"
 Public Const FreeByteMinLength = 5&
 Public Const NewPESecName = ".movehcs"
 Public Const NewMacSecName = "__MOVEHCS"
+Public Const MacroLoc = Left$(MacroDir,InStrRev(MacroDir,"\") - 1)
+
 
 '文件属性
 Private Type HCS_FILE
@@ -1377,7 +1379,7 @@ Private Declare Function AppendMenu Lib "user32" Alias "AppendMenu" ( _
 Private Declare Function TrackPopupMenu Lib "user32" ( _
 	ByVal hMenu As Long, _
 	ByVal wFlags As Long, _
-	ByVal X As Long, _
+	ByVal x As Long, _
 	ByVal Y As Long, _
 	ByVal nReserved As Long, _
 	ByVal hwnd As Long, _
@@ -1409,8 +1411,67 @@ Private Declare Function GetMenuString Lib "user32" Alias "GetMenuString" ( _
 '	ByVal nHeight As Long, _
 '	ByVal bRepaint As Long) As Long
 
+'浏览文件夹
+Private Type BrowseInfo
+	hWndOwner		As Long		'浏览文件夹对话框的父窗体句柄
+	pIDLRoot		As Long		'ITEMIDLIST结构的地址，包含浏览时的初始根目录，可以是NULL，此时桌面目录将被使用
+	pszDisplayName	As Long		'用来保存用户选中的目录字符串的内存地址
+	lpszTitle		As String	'显示位于对话框左上部的标题
+	ulFlags			As Long		'指定对话框的外观和功能的标志
+	lpfnCallback	As Long		'处理事件的回调函数
+	lParam			As Long		'应用程序传给回调函数的参数
+	iImage			As Long		'保存被选取的文件夹的图片索引
+End Type
+
+'浏览文件夹参数
+Private Enum BrowseFolder
+	BIF_RETURNONLYFSDIRS = &H1		'仅返回文件系统的目录
+	BIF_DONTGOBELOWDOMAIN = &H2		'在树形视窗中，不包含域名底下的网络目录结构
+	BIF_STATUSTEXT = &H4&			'包含一个状态区域。通过给对话框发送消息使回调函数设置状态文本
+	BIF_EDITBOX = &H10				'包含一个编辑框，用户可以输入选中项的名字
+	BIF_BROWSEINCLUDEURLS = &H80
+	BIF_RETURNFSANCESTORS = &H8		'返回文件系统的一个节点
+	BIF_VALIDATE = &H20				'没有BIF_EDITBOX标志位时，该标志位被忽略。如果用户输入的名字非法，将发送BFFM_VALIDATEFAILED消息给回调函数
+	BIF_NEWDIALOGSTYLE = &H40
+	BIF_USENEWUI = BIF_EDITBOX Or BIF_NEWDIALOGSTYLE	'对话框上有新建文件夹按钮
+	BIF_UAHINT = &H100
+	BIF_NONEWFOLDERBUTTON = &H200
+	BIF_NOTRANSLATETARGETS = &H400
+	BIF_BROWSEFORCOMPUTER = &H1000	'返回计算机名
+	BIF_BROWSEFORPRINTER = &H2000	'返回打印机名
+	BIF_BROWSEINCLUDEFILES = &H4000	'浏览器将显示目录，同时也显示文件
+	BIF_SHAREABLE = &H8000
+	BIF_BROWSEFILEJUNCTIONS = &H10000
+End Enum
+
+'浏览文件夹函数
+Private Declare Sub CoTaskMemFree Lib "ole32.dll" (ByVal hMem As Long)
+Private Declare Function SHBrowseForFolder Lib "shell32" (lpbi As BrowseInfo) As Long
+Private Declare Function SHGetPathFromIDList Lib "shell32" ( _
+	ByVal pidList As Long, _
+	ByVal lpBuffer As String) As Long
+
+'打开 CHM 帮助文件
+Private Enum HTMLHELP_DISPLAY
+	HH_DISPLAY_TOPIC = &H0		'上下文相关的帮助(导航窗口)
+	HH_DISPLAY_TOC = &H1
+	'HH_DISPLAY_INDEX = &H2		'索引窗口
+	'HH_DISPLAY_SEARCH = &H3		'搜索窗口
+	'HH_DISPLAY_TEXT_POPUP = &HE	'上下文相关的帮助
+	'HH_CLOSE_ALL = &H12
+	'HH_HELP_CONTEXT = &HF		'上下文相关的帮助
+End Enum
+
+'hwndCaller指定调用者的窗口，pszFile指定要调用的文件，uCommand是发送给HtmlHelp的命令，dwData是uCommand的参数。
+Private Declare Function HtmlHelp Lib "hhctrl.ocx" Alias "HtmlHelpA" ( _
+	ByVal hwndCaller As Long, _
+	ByVal pszFile As String, _
+	ByVal uCommand As Long, _
+	ByVal dwData As Long) As Long
+
+
 Public OSLanguage As String,Selected() As String,UpdateSet() As String
-Public UIDataList() As INIFILE_DATA,LangFile As String,LFList() As LOG_FONT
+Public UIDataList() As INIFILE_DATA,UIFileList() As UI_FILE,LangFile As String,LFList() As LOG_FONT
 Public CheckHexStr() As CHECK_STRING_VALUE,CheckSkipStr() As String
 
 Public SourceFile As FILE_PROPERTIE,TargetFile As FILE_PROPERTIE
@@ -1522,6 +1583,7 @@ Public Function getCodePageRegExp(FN As FILE_IMAGE,strData As STRING_SUB_PROPERT
 	.lMaxHexLength = strData.lHexLength
 	'检测代码页并获取字串地址
 	sp = .lStartAddress: ep = .lEndAddress
+	If fType <> 0 Then .lReferenceNum = ep
 	For i = 0 To UBound(CPList)
 		For j = 0 To UBound(EncodeList)
 			k = EncodeList(j)
@@ -1549,7 +1611,7 @@ Public Function getCodePageRegExp(FN As FILE_IMAGE,strData As STRING_SUB_PROPERT
 				k = 4: m = IIf(fType = 0,0,3): l = 0
 			End Select
 			If LengthFilterSet = 1 Then
-				.sString = Replace$(Replace$(EndChar(1),")(",StrTypeEndChar(i,j),,1),")(","(",,1)
+				.sString = Replace$(Replace$(Mid(EndChar(1),InStr(EndChar(1),")(")),")(",StrTypeEndChar(i,j),,1),")(","(",,1)
 				If getEndByteRegExp(FN,sp,ep,Mode,.sString,.CodePage) - sp > MaxLength * k Then GoTo NextNo
 			End If
 			For n = m To l Step IIf(m = 0,1,-1)
@@ -1560,7 +1622,7 @@ Public Function getCodePageRegExp(FN As FILE_IMAGE,strData As STRING_SUB_PROPERT
 				Set Matches = RegExp.Execute(ByteToString(GetBytes(FN,.lMaxHexLength + k,sp - n,Mode),.CodePage) & vbNullChar)
 				If Matches.Count > 0 Then
 					.lHexLength = -1
-					.lStartAddress = sp - n: .lMaxAddress = sp - n
+					.lStartAddress = sp - n: .lMaxAddress = sp - n: .lEndAddress = ep + n
 					Call GetStrAddress(FN,Data,Matches(0),Mode)
 					If .lHexLength > -1 Then
 						If fType = 0 Then
@@ -1574,7 +1636,7 @@ Public Function getCodePageRegExp(FN As FILE_IMAGE,strData As STRING_SUB_PROPERT
 								getCodePageRegExp = .lMaxAddress
 								Exit Function
 							End If
-						Else
+						ElseIf .lCharLength <= sp Then
 							strData.lStartAddress = .lStartAddress
 							strData.lEndAddress = .lEndAddress
 							strData.lMaxAddress = .lMaxAddress
@@ -1583,6 +1645,15 @@ Public Function getCodePageRegExp(FN As FILE_IMAGE,strData As STRING_SUB_PROPERT
 							strData.sString = Matches(0).SubMatches(1)
 							getCodePageRegExp = .lMaxAddress
 							Exit Function
+						ElseIf .lStartAddress < .lReferenceNum Then
+							.lReferenceNum = .lStartAddress
+							strData.lStartAddress = .lStartAddress
+							strData.lEndAddress = .lEndAddress
+							strData.lMaxAddress = .lMaxAddress
+							strData.CodePage = .CodePage
+							strData.lHexLength = .lHexLength
+							strData.sString = Matches(0).SubMatches(1)
+							getCodePageRegExp = .lMaxAddress
 						End If
 					End If
 					Exit For
@@ -1601,6 +1672,7 @@ End Function
 
 '获取正则表达式字串的地址
 Public Sub GetStrAddress(FN As FILE_IMAGE,strData As STRING_SUB_PROPERTIE,Match As Object,ByVal Mode As Long)
+	On Error GoTo ExitFunction
 	With strData
 	Select Case .CodePage
 	Case CP_WESTEUROPE
@@ -1640,6 +1712,7 @@ Public Sub GetStrAddress(FN As FILE_IMAGE,strData As STRING_SUB_PROPERTIE,Match 
 		End If
 	End Select
 	End With
+	ExitFunction:
 End Sub
 
 
@@ -1897,6 +1970,7 @@ Public Function CheckStrRegExp(ByVal textStr As String,ByVal Patrn As String,Opt
 	Dim n As Long,Matches As Object
 	If Patrn = "" Then Exit Function
 	If Trim$(textStr) = "" Then Exit Function
+	On Error GoTo ExitFunction
 	With RegExp
 		Select Case Mode
 		Case 0
@@ -1952,6 +2026,7 @@ Public Function CheckStrRegExp(ByVal textStr As String,ByVal Patrn As String,Opt
 			CheckStrRegExp = IIf(CheckStrRegExp = Len(textStr),True,False)
 		End Select
 	End With
+	ExitFunction:
 End Function
 
 
@@ -2696,6 +2771,7 @@ Public Function getSubFiles(List() As FILE_LIST,ByVal DirPath As String,Optional
 	PathList(0) = DirPath
 	m = 20
 	ReDim List(m) As FILE_LIST,FileList(m) As String
+	On Error Resume Next
 	Do
 		DirPath = PathList(i)
 		File = Dir$(DirPath & "*.*",vbDirectory)
@@ -3086,7 +3162,7 @@ End Function
 'Mode <> 0，查找除 StartPos 到 EndPos 之间以外的位置(不包含 StartPos 和 EndPos)
 '返回 InByte 值 = 0，没有找到，> 0 找到 (以 1 开始的地址)
 '注意：StartPos、EndPos 和 MaxPos 均为以 0 开始的地址
-Private Function InByte(Bytes() As Byte,Find() As Byte,Optional ByVal StartPos As Long,Optional ByVal EndPos As Long, _
+Private Function InByte(Bytes() As Byte,Find() As Byte,Optional ByVal StartPos As Long,Optional ByVal endPos As Long, _
 		Optional ByVal MaxPos As Long,Optional Mode As Long) As Long
 	Dim i As Long,j As Long,k As Long,Length As Long,tempByte() As Byte
 	Length = UBound(Find) + 1
@@ -3283,7 +3359,7 @@ Public Function InByteRevRegExp(Bytes() As Byte,Find() As Byte,Optional ByVal St
 		If Mode = 0 Then
 			InByteRevRegExp = i	'注意找到第一个数就返回"1"
 			Exit For
-		ElseIf (i + Length - 2 < StartPos) Or (i + Length - 2 > EndPos) Then
+		ElseIf (i + Length - 2 < StartPos) Or (i + Length - 2 > endPos) Then
 			InByteRevRegExp = i	'注意找到第一个数就返回"1"
 			Exit For
 		End If
@@ -3410,7 +3486,7 @@ Private Function GetCurPos(ByVal hwnd As Long,ByVal Mode As Boolean,Optional ByV
 	'获得光标所在行的行号
 	GetCurPos.y = SendMessageLNG(hwnd, EM_LINEFROMCHAR, GetCurPos.x, 0&)
 	'返回光标所在行的字符数
-	GetCurPos.x = GetCurPos.x - SendMessageLNG(hwnd, EM_LINEINDEX, GetCurPos.y, 0&)
+	GetCurPos.x = GetCurPos.x - SendMessageLNG(hwnd, EM_LINEINDEX, GetCurPos.y, 0&) + 1
 End Function
 
 
@@ -3454,15 +3530,15 @@ End Function
 '查找字串并移动光标位置
 'Mode = False 从头到尾，否则从尾到头
 'FindCurPos > 0 已找到，= 0 未找到, = -1 相同位置(只找到一项), = -2 通配符语法错误, = -3 正则表达式语法错误
-Private Function FindCurPos(ByVal hwnd As Long,ByVal FindStr As String,ByVal Mode As Boolean,Optional strText As String) As Long
-	Dim i As Long,n As Long,Lines As Long,Stemp As Integer,sLength As Long,bLength As Long
-	Dim ptPos As POINTAPI,bkPos As POINTAPI,Matches As Object
+Private Function FindCurPos(ByVal hwnd As Long,ByVal FindStr As String,ByVal Mode As Boolean,Optional strText As String,Optional FindMaxLoc As Long) As Long
+	Dim i As Long,n As Long,Lines As Long,Stemp As Integer
+	Dim ptPos As POINTAPI,bkPos As POINTAPI,nowPos As POINTAPI,Matches As Object
 	On Error GoTo errHandle
 	'获取光标位置及文本框内字串的行数
 	Lines = SendMessageLNG(hwnd, EM_GETLINECOUNT, 0&, 0&) - 1 'Lines 以 1 为起点
 	If Lines = -1 Then Exit Function
 	'检测查找内容的查找方式
-	ReDim TempList(0) As String,tmpByte(0) As Byte
+	ReDim TempList(0) As String
 	Stemp = GetFindMode(FindStr)
 	Select Case Stemp
 	Case 0
@@ -3472,10 +3548,6 @@ Private Function FindCurPos(ByVal hwnd As Long,ByVal FindStr As String,ByVal Mod
 				FindStr = Replace$(FindStr,"\" & TempList(i),TempList(i))
 			Next i
 		End If
-		sLength = Len(FindStr)
-		'bLength = StrHexLength(FindStr,GetACP,0)
-		tmpByte = StrConv(FindStr,vbFromUnicode)
-		bLength = UBound(tmpByte) + 1
 	Case 1
 		'转换通配符为正则表达式模板
 		TempList = ReSplit("\*,\#,\?,\[",",",-1)
@@ -3495,92 +3567,69 @@ Private Function FindCurPos(ByVal hwnd As Long,ByVal FindStr As String,ByVal Mod
 			If (FindStr Like "*(.*)*") = True Then Stemp = 3
 		End If
 	End Select
-	ReDim TempList(1) As String,tmpByte(0) As Byte
 	'初始化正则表达式
 	With RegExp
 		.Global = Mode
 		.IgnoreCase = False
 		.Pattern = FindStr
 	End With
-	'Win10 下，需要用到编辑框中的所有字串
-	'If StrToLong(GetWindowsVersion()) < 62 Then
-		strText = ""	'Win10 以下版本不需要
-	'ElseIf strText = "" Then
-	'	strText = GetTextBoxString(hwnd)
-	'End If
 	'获取光标位置  .y 为行号 (起点 = 0)，.x 为所在行的字符数偏移(起点 = 0)
-	ptPos = GetCurPos(hwnd,Mode,strText)
+	ptPos = GetCurPos(hwnd,True)
 	'备份起始点，用于判断找到的位置是否就是光标起点位置
 	bkPos = ptPos
+	ptPos.x = FindMaxLoc
 	'查找字串
 	With ptPos
 		Do
-			TempList(0) = GetCurPosLine(hwnd,ptPos.y)
-			If TempList(0) = "" Then GoTo NextLine
+			strText = GetCurPosLine(hwnd,ptPos.y)
+			If strText = "" Then GoTo NextLine
 			If Stemp = 0 Then
 				If Mode = False Then
-   		 			.x = InStr(.x + 1,TempList(0),FindStr)
+   		 			.x = InStr(.x + 1,strText,FindStr)
    	 			Else
-    				.x = InStrRev(TempList(0),FindStr,.x - 1)
+    				.x = InStrRev(strText,FindStr,.x - 1)
     			End If
+    			i = Len(FindStr)
    		 	Else
     			If Mode = False Then
-    				TempList(1) = Mid$(TempList(0),.x + 1)
+    				strText = Mid$(strText,.x + 1)
     			ElseIf .x > 0 Then
-					TempList(1) = Left$(TempList(0),.x - 1)
-				Else
-					TempList(1) = TempList(0)
+					strText = Left$(strText,.x - 1)
 				End If
-				If TempList(1) = "" Then GoTo NextLine
-   				Set Matches = RegExp.Execute(TempList(1))
+				If strText = "" Then GoTo NextLine
+   				Set Matches = RegExp.Execute(strText)
 				If Matches.Count = 0 Then GoTo NextLine
 				If Mode = False Then
 					If Stemp = 3 Then
-						.x = .x + InStr(1,TempList(1),Matches(0).SubMatches(0))
-						sLength = Len(Matches(0).SubMatches(0))
-						'bLength = StrHexLength(Matches(0).SubMatches(0),GetACP,0)
-						tmpByte = StrConv(Matches(0).SubMatches(0),vbFromUnicode)
-						bLength = UBound(tmpByte) + 1
+						.x = .x + InStr(1,strText,Matches(0).SubMatches(0))
+						i = Len(Matches(0).SubMatches(0))
 					Else
 						.x = .x + Matches(0).FirstIndex + 1
-						sLength = Matches(0).Length
-						'bLength = StrHexLength(Matches(0).Value,GetACP,0)
-						tmpByte = StrConv(Matches(0).Value,vbFromUnicode)
-						bLength = UBound(tmpByte) + 1
+						i = Matches(0).Length
 					End If
 				Else
 					i = Matches.Count - 1
 					If Stemp = 3 Then
-						.x = InStrRev(TempList(1),Matches(i).SubMatches(0),-1)
-						sLength = Len(Matches(i).SubMatches(0))
-						'bLength = StrHexLength(Matches(i).SubMatches(0),GetACP,0)
-						tmpByte = StrConv(Matches(i).SubMatches(0),vbFromUnicode)
-						bLength = UBound(tmpByte) + 1
+						.x = InStrRev(strText,Matches(i).SubMatches(0),-1)
+						i = Len(Matches(i).SubMatches(0))
 					Else
 						.x = Matches(i).FirstIndex + 1
-						sLength = Matches(i).Length
-						'bLength = StrHexLength(Matches(i).Value,GetACP,0)
-						tmpByte = StrConv(Matches(i).Value,vbFromUnicode)
-						bLength = UBound(tmpByte) + 1
+						i = Matches(i).Length
 					End If
 				End If
 			End If
    		 	If .x > 0 Then
-				.x = .x - 1
-				If .y = bkPos.y And .x + sLength = bkPos.x Then
+   		 		.x = .x - 1
+				Call SetCurPos(hwnd,.y,.x,i)
+				nowPos = GetCurPos(hwnd,True)
+				If nowPos.y = bkPos.y And nowPos.x = bkPos.x Then
 					FindCurPos = -1
+					strText = Mid$(GetCurPosLine(hwnd,.y),.x + 1,i)
 				Else
 					FindCurPos = .y + 1
 				End If
-				If strText = "" Then
-					Call SetCurPos(hwnd,.y,.x,sLength,strText)
-				Else
-					'Call SetCurPos(hwnd,.y,StrHexLength(Left$(TempList(0),.x),GetACP,0),bLength,strText)
-					tmpByte = StrConv(Left$(TempList(0),.x),vbFromUnicode)
-					Call SetCurPos(hwnd,.y,UBound(tmpByte) + 1,bLength,strText)
-				End If
-				strText = Mid$(TempList(0),.x + 1,sLength)
-				Exit Do
+				FindMaxLoc = .x + i
+				Exit Function
 			End If
 			NextLine:
 			.x = 0
@@ -3643,7 +3692,7 @@ Public Function InsertStr(ByVal hwnd As Long,ByVal strText As String,ByVal Inser
 		InsertStr = Left$(strText,.x) & InsertText & Mid$(strText,.x + 1)
 		.x = .x + Len(InsertText)
 	End With
-	Call SetCurPos(hwnd,lpPoint.x,lpPoint.y,0)
+	Call SetCurPos(hwnd,lpPoint.y,lpPoint.x,0)
 End Function
 
 
@@ -5140,7 +5189,6 @@ Public Function getEndByteRegExp(FN As FILE_IMAGE,ByVal Offset As Long,ByVal Max
 	With RegExp
 		.Global = False
 		.IgnoreCase = False
-		.Pattern = Pattern
 		If CodePage > 0 Then
 			.Pattern = Pattern
 		Else
@@ -5570,6 +5618,7 @@ Public Function WriteSettings(ByVal WriteType As String) As Boolean
 		SaveSetting(AppName,"Option","AddAndDelFilterVoiceCheckBox",Selected(27))
 		SaveSetting(AppName,"Option","AddAndDelReserveVoiceCheckBox",Selected(28))
 		SaveSetting(AppName,"Option","WriteStringVoiceCheckBox",Selected(29))
+		SaveSetting(AppName,"Option","HelpSystemOption",Selected(30))
 	End If
 	'保存字串提取选项
 	If WriteType = "GetString" Or WriteType = "All" Then
@@ -5751,12 +5800,14 @@ Public Function WriteSettings(ByVal WriteType As String) As Boolean
 		SaveSetting(AppName,"GetString","UseMatchFilterListFile",ExtractSet(34))
 		SaveSetting(AppName,"GetString","FilterListFileSelect",ExtractSet(39))
 		SaveSetting(AppName,"GetString","FilterListFile",Mid$(ExtractSet(35),InStrRev(ExtractSet(35),"\") + 1))
+		SaveSetting(AppName,"GetString","FilterListFolder",Left$(ExtractSet(35),InStrRev(ExtractSet(35),"\") - 1))
 	End If
 	'保存保留字串列表设置
 	If WriteType = "ReserveStrDic" Or WriteType = "All" Then
 		SaveSetting(AppName,"GetString","UseMatchReserveListFile",ExtractSet(36))
 		SaveSetting(AppName,"GetString","ReserveListFileSelect",ExtractSet(40))
 		SaveSetting(AppName,"GetString","ReserveListFile",Mid$(ExtractSet(37),InStrRev(ExtractSet(37),"\") + 1))
+		SaveSetting(AppName,"GetString","ReserveListFolder",Left$(ExtractSet(37),InStrRev(ExtractSet(37),"\") - 1))
 	End If
 	'保存对话框字体设置
 	If WriteType = "DlgFont" Or WriteType = "Sets" Then
@@ -6688,7 +6739,7 @@ End Function
 'Mode = True 编辑模式，如果打开文件成功返回字符编码和 True
 'Mode = False 查看和确认字符编码模式，如果打开文件成功并按 [确定] 按钮返回字符编码和 True
 Public Function EditFile(ByVal File As String,FileDataList() As String,ByVal Mode As Boolean) As Boolean
-	Dim MsgList() As String,FileDataListBak() As String
+	Dim MsgList() As String,FileDataListBak() As String,Temp As String
 	If getMsgList(UIDataList,MsgList,"EditFile",1) = False Then Exit Function
 	'Dim objStream As Object
 	'Set objStream = CreateObject("Adodb.Stream")
@@ -6696,9 +6747,15 @@ Public Function EditFile(ByVal File As String,FileDataList() As String,ByVal Mod
 	'If Not objStream Is Nothing Then CodeList = getCodePageList(0,49)
 	'Set objStream = Nothing
 	FileDataListBak = FileDataList
-	Begin Dialog UserDialog 1020,595,IIf(Mode = True,MsgList(0),MsgList(1)) & " - " & File,.EditFileDlgFunc ' %GRID:10,7,1,1
+	Temp = File
+	If Len(Temp) > 90 Then
+		Temp = Left$(Temp,InStr(Temp,"\")) & "..." & Right(Temp,90 - Len(Left$(Temp,InStr(Temp,"\"))))
+	End If
+	Begin Dialog UserDialog 1020,595,IIf(Mode = True,MsgList(0),MsgList(1)) & " - " & Temp,.EditFileDlgFunc ' %GRID:10,7,1,1
 		CheckBox 0,3,14,14,"",.OptionBox
+		CheckBox 0,3,14,14,"",.WriteStateBox
 		TextBox 0,0,0,21,.SuppValueBox
+		TextBox 0,0,0,21,.FindMaxLocBox
 		Text 10,7,920,14,File,.FilePath,2
 		Text 10,7,90,14,MsgList(2),.FindText
 		DropListBox 110,3,270,21,MsgList(),.FindTextBox,1
@@ -6720,12 +6777,14 @@ Public Function EditFile(ByVal File As String,FileDataList() As String,ByVal Mod
 	End Dialog
 	Dim dlg As UserDialog
 	If Mode = False Then dlg.OptionBox = 1
-	If Dialog(dlg) = 0 Then
+	Select Case Dialog(dlg)
+	Case 0
 		FileDataList = FileDataListBak
-		Erase AllStrList,UseStrList
-		Exit Function
-	End If
-	EditFile = True
+	Case 10
+		If dlg.WriteStateBox = 1 Then EditFile = True
+	Case Else
+		EditFile = True
+	End Select
 	Erase AllStrList,UseStrList
 End Function
 
@@ -6743,6 +6802,8 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		DlgVisible "SuppValueBox",False
 		DlgVisible "FilePath",False
 		DlgVisible "OptionBox",False
+		DlgVisible "WriteStateBox",False
+		DlgVisible "FindMaxLocBox",False
 		If DlgValue("OptionBox") = 0 Then
 			DlgVisible "OKButton",False
 			DlgVisible "CancelButton",False
@@ -6810,13 +6871,19 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		If getMsgList(UIDataList,MsgList,"EditFileDlgFunc",1) = False Then Exit Function
 		Select Case DlgItem$
 		Case "HelpButton"
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1004,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("EditFileHelp")
 			Exit Function
 		Case "OKButton", "CancelButton"
 			EditFileDlgFunc = False
 			Exit Function
 		Case "ExitButton"
-			If DlgText("InTextBox") = ReadTextFile(DlgText("FilePath"),CodeList(DlgValue("CodeNameList")).CharSet) Then
+			If DlgValue("WriteStateBox") = 1 Then
+				EditFileDlgFunc = False
+				Exit Function
+			ElseIf DlgText("InTextBox") = ReadTextFile(DlgText("FilePath"),CodeList(DlgValue("CodeNameList")).CharSet) Then
 				EditFileDlgFunc = False
 				Exit Function
 			End If
@@ -6832,6 +6899,8 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 					MsgBox MsgList(6),vbOkOnly+vbInformation,MsgList(0)
 				End If
 			Case vbNo
+				DlgFocus("CancelButton")  '设置焦点到取消按钮
+				SendMessageLNG GetFocus(), BM_CLICK, 0, 0
 				EditFileDlgFunc = False
 				Exit Function
 			End Select
@@ -6840,8 +6909,10 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Temp = DlgText("FilePath")
 			If Dir$(Temp) <> "" Then SetAttr Temp,vbNormal
 			If WriteToFile(Temp,DlgText("InTextBox"),CodeList(DlgValue("CodeNameList")).CharSet) = True Then
+				DlgValue "WriteStateBox",1
 				MsgBox MsgList(5),vbOkOnly+vbInformation,MsgList(0)
 			Else
+				If DlgValue("WriteStateBox") = 0 Then DlgValue "WriteStateBox",0
 				MsgBox MsgList(6),vbOkOnly+vbInformation,MsgList(0)
 			End If
 			DlgVisible "FilterButton",True
@@ -6905,7 +6976,8 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			'DlgFocus("InTextBox")  '设置焦点到文本框，2016 版会闪烁，使得光标位置移到最前面
 			n = GetDlgItem(CLng(DlgText("SuppValueBox")),DlgControlId("InTextBox"))
 			SendMessageLNG(n,WM_SETFOCUS,0,0)  '设置焦点到文本框
-			Select Case FindCurPos(n,DlgText("FindTextBox"),False,DlgText("InTextBox"))
+			i = StrToLong(DlgText("FindMaxLocBox"))
+			Select Case FindCurPos(n,DlgText("FindTextBox"),False,Temp,i)
 			Case 0
 				MsgBox MsgList(4),vbOkOnly+vbInformation,MsgList(0)
 			Case -1
@@ -6915,6 +6987,7 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Case -3
 				MsgBox MsgList(14),vbOkOnly+vbInformation,MsgList(0)
 			End Select
+			DlgText "FindMaxLocBox",CStr(i)
 			Exit Function
 		Case "FilterButton"
 			If DlgText("FindTextBox") = "" Then
@@ -7041,6 +7114,9 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -7119,12 +7195,18 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 		If getMsgList(UIDataList,MsgList,"EditFileDlgFunc",1) = False Then Exit Function
 		Select Case SuppValue
 		Case 1
+			If StrToLong(Selected(30)) = 1 Then
+				If OpenCHM(CLng(DlgText("SuppValueBox")),1004,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+			End If
 			Call Help("EditFileHelp")
 		Case 2
 			If getMsgList(UIDataList,MsgList,"RegExpRuleTip",1) = False Then Exit Function
 			i = ShowPopupMenu(MsgList,vbPopupUseRightButton)
 			If i < 0 Then Exit Function
 			If i = UBound(MsgList) Then
+				If StrToLong(Selected(30)) = 1 Then
+					If OpenCHM(CLng(DlgText("SuppValueBox")),1022,Selected(0),OSLanguage,UIFileList) = True Then Exit Function
+				End If
 				Call Help("RegExpRuleHelp")
 				Exit Function
 			End If
@@ -7143,7 +7225,8 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			'DlgFocus("InTextBox")  '设置焦点到文本框，2016 版会闪烁，使得光标位置移到最前面
 			n = GetDlgItem(CLng(DlgText("SuppValueBox")),DlgControlId("InTextBox"))
 			SendMessageLNG(n,WM_SETFOCUS,0,0)  '设置焦点到文本框
-			Select Case FindCurPos(n,DlgText("FindTextBox"),False,DlgText("InTextBox"))
+			i = StrToLong(DlgText("FingMaxLocBox"))
+			Select Case FindCurPos(n,DlgText("FindTextBox"),False,Temp,i)
 			Case 0
 				MsgBox MsgList(4),vbOkOnly+vbInformation,MsgList(0)
 			Case -1
@@ -7153,6 +7236,7 @@ Private Function EditFileDlgFunc(DlgItem$, Action%, SuppValue&) As Boolean
 			Case -3
 				MsgBox MsgList(14),vbOkOnly+vbInformation,MsgList(0)
 			End Select
+			DlgText "FingMaxLocBox",CStr(i)
 		Case 4
 			If DlgVisible("FilterButton") = True Then
 				If DlgText("FindTextBox") = "" Then
@@ -7284,7 +7368,7 @@ End Function
 
 '关于和帮助
 Public Sub Help(ByVal HelpTip As String)
-	Dim i As Long,MsgList() As String,HelpList(22) As String
+	Dim i As Long,MsgList() As String,HelpList(24) As String
 	Dim HelpTipTitle As String,HelpMsg As String
 
 	For i = 0 To UBound(UIDataList)
@@ -7338,6 +7422,10 @@ Public Sub Help(ByVal HelpTip As String)
 				HelpList(21) = StrListJoin(.Value,vbCrLf) & vbCrLf & vbCrLf
 			Case "RegExpRuleHelp"
 				HelpList(22) = StrListJoin(.Value,vbCrLf)
+			Case "FilterSetHelp"
+				HelpList(23) = StrListJoin(.Value,vbCrLf) & vbCrLf & vbCrLf
+			Case "HelpSystemSetHelp"
+				HelpList(24) = StrListJoin(.Value,vbCrLf) & vbCrLf & vbCrLf
 			End Select
 		End With
 	Next i
@@ -7395,6 +7483,12 @@ Public Sub Help(ByVal HelpTip As String)
 	Case "RegExpRuleHelp"
 		HelpTipTitle = MsgList(18)
 		HelpMsg = HelpList(22) & vbCrLf & vbCrLf & HelpList(7)
+	Case "FilterSetHelp"
+		HelpTipTitle = MsgList(19)
+		HelpMsg = HelpList(23) & HelpList(7)
+	Case "HelpSystemSetHelp"
+		HelpTipTitle = MsgList(20)
+		HelpMsg = HelpList(24) & HelpList(7)
 	End Select
 
 	Begin Dialog UserDialog 830,553,MsgList(0) & " - " & MsgList(1),.CommonDlgFunc ' %GRID:10,7,1,1
@@ -8742,7 +8836,11 @@ Public Function CompSecHeader(srcFile As FILE_PROPERTIE,trgFile As FILE_PROPERTI
 		j = IIf(j > k,k,j)
 		Select Case srcFile.Magic
 		Case "PE32","NET32","PE64","NET64"
-			k = srcFile.DataDirectory(2).lPointerToRawData
+			If srcFile.DataDirs > 0 Then
+				k = srcFile.DataDirectory(2).lPointerToRawData
+			Else
+				k = srcFile.SecList(srcFile.MaxSecID).lPointerToRawData + srcFile.SecList(srcFile.MaxSecID).lSizeOfRawData - 1
+			End If
 		Case Else
 			k = srcFile.SecList(srcFile.MaxSecID).lPointerToRawData + srcFile.SecList(srcFile.MaxSecID).lSizeOfRawData - 1
 		End Select
@@ -8851,8 +8949,8 @@ End Function
 Public Function SkipSubSection(Sec As SECTION_PROPERTIE,ByVal Offset As Long,MinVal As Long,MaxVal As Long,Optional ByVal Mode As Boolean) As Long
 	Dim i As Integer
 	SkipSubSection = -1
-	MinVal = 0: MaxVal = 0
 	If Sec.SubSecs = 0 Then Exit Function
+	MinVal = 0: MaxVal = 0
 	If Offset < 0 Then Exit Function
 	If Mode = False Then
 		For i = 0 To Sec.SubSecs - 1
@@ -8888,6 +8986,7 @@ End Function
 Public Function SkipHeader(File As FILE_PROPERTIE,RVA As Long,Optional SkipVal As Long,Optional ByVal Mode As Long,Optional ByVal fType As Long) As Long
 	Dim i As Integer,j As Integer,EndPos As Long
 	SkipHeader = -1
+	If File.DataDirs = 0 Then Exit Function
 	i = 15 + IIf(File.LangType = NET_FILE_SIGNATURE,7 + File.NetStreams,0)
 	ReDim List(i) As IMAGE_DATA_DIRECTORY
 	With File
@@ -9953,4 +10052,125 @@ Public Function CheckRefTypeArray(DataList() As REF_TYPE,Optional ByVal SetID As
 	Next i
 	ExitFunction:
 	CheckRefTypeArray = False
+End Function
+
+
+'浏览文件夹
+Public Function BrowseForFolder(Folder As String,sTitle As String) As Boolean
+	Dim lpIDList As Long, lResult As Long, udtBI As BrowseInfo
+	With udtBI
+		.hWndOwner = 0&
+		.lpszTitle = sTitle
+		.ulFlags = BIF_RETURNONLYFSDIRS Or BIF_USENEWUI
+	End With
+	lpIDList = SHBrowseForFolder(udtBI)
+	If lpIDList Then
+		Folder = String$(260, 0)
+		SHGetPathFromIDList lpIDList, Folder
+		CoTaskMemFree lpIDList
+		Folder = Replace$(Folder,vbNullChar,"")
+		BrowseForFolder = True
+	End If
+End Function
+
+
+'打开 CHM 帮助文件
+Public Function OpenCHM(ByVal hwnd As Long,ByVal HelpID As Long,ByVal UISet As String,ByVal OSLng As String,UIFiles() As UI_FILE) As Boolean
+	Dim i As Long,j As Long,n As Long,chmFile As String,Temp As String
+	Dim TempList() As String,TempArray() As String
+	Select Case UISet
+	Case "","0"
+		UISet = OSLng
+	Case "1"
+		UISet = Right$("0" & Hex$(PSL.Option(pslOptionSystemLanguage)),4)
+	End Select
+	UISet = LCase$(UISet)
+	TempList = ReSplit(UISet,";")
+	Temp = "\Help\"
+	Do
+		For i = 0 To UBound(UIFiles)
+			If LCase$(UIFiles(i).LangID) = UISet Then
+				chmFile = MacroLoc & Temp & AppName & "_" & ReSplit(UISet,";")(0) & ".chm"
+				Exit For
+			End If
+			TempArray = ReSplit(LCase$(UIFiles(i).LangID),";")
+			For j = 0 To UBound(TempList)
+				For n = 0 To UBound(TempArray)
+					If TempList(j) = TempArray(n) Then
+						chmFile = MacroLoc & Temp & AppName & "_" & TempArray(n) & ".chm"
+						Exit For
+					End If
+				Next n
+				If chmFile <> "" Then Exit For
+			Next j
+			If chmFile <> "" Then Exit For
+		Next i
+		If chmFile = "" Then chmFile = MacroLoc & Temp & AppName & "_" & OSLng & ".chm"
+		If Dir$(chmFile) <> "" Then Exit Do
+		For i = 0 To 2
+			If i = 0 Then
+				chmFile = MacroLoc & Temp & AppName & "_0804.chm"
+			ElseIf i = 1 Then
+				chmFile = MacroLoc & Temp & AppName & "_0404.chm"
+			Else
+				chmFile = MacroLoc & Temp & AppName & "_" & ReSplit(UIFiles(0).LangID,";")(0) & ".chm"
+			End If
+			If Dir$(chmFile) <> "" Then Exit Do
+			chmFile = ""
+		Next i
+		If Temp = "\Help\" Then Temp = "\Data\" Else Temp = ""
+	Loop Until Temp = ""
+	If chmFile = "" Then Exit Function
+	Select Case HelpID
+	Case 1002
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/about.htm", HH_DISPLAY_TOC, 0)
+	Case 1003
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/AutomaticUpdate.htm", HH_DISPLAY_TOC, 0)
+	Case 1004
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/Built-inTextEditor.htm", HH_DISPLAY_TOC, 0)
+	Case 1005
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/CodingRange.htm", HH_DISPLAY_TOC, 0)
+	Case 1006
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/ExtractionOption.htm", HH_DISPLAY_TOC, 0)
+	Case 1007
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/StringEditing-source.htm", HH_DISPLAY_TOC, 0)
+	Case 1008
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/StringEditing-translation.htm", HH_DISPLAY_TOC, 0)
+	Case 1009
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/FilterDisplaySet-S.htm", HH_DISPLAY_TOC, 0)
+	Case 1010
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/FilterDisplaySet-T.htm", HH_DISPLAY_TOC, 0)
+
+	Case 1011
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/Global-Settings.htm", HH_DISPLAY_TOC, 0)
+	Case 1012
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/CustomStringType.htm", HH_DISPLAY_TOC, 0)
+	Case 1013
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/FileReadingWriting-And-prompting.htm", HH_DISPLAY_TOC, 0)
+	Case 1015
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/FilterAndKeepLists.htm", HH_DISPLAY_TOC, 0)
+	Case 1016
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/Find.htm", HH_DISPLAY_TOC, 0)
+	Case 1017
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/GeneralUsageMethod.htm", HH_DISPLAY_TOC, 0)
+	Case 1018
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/IntroductionHardcodedMacros.htm", HH_DISPLAY_TOC, 0)
+	Case 1019
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/Preface.htm", HH_DISPLAY_TOC, 0)
+	Case 1021
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/ReferenceAlgorithm.htm", HH_DISPLAY_TOC, 0)
+	Case 1022
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/RegularExpressionSyntax.htm", HH_DISPLAY_TOC, 0)
+
+	Case 1024
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/StringExtraction.htm", HH_DISPLAY_TOC, 0)
+	Case 1025
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/StringSearch.htm", HH_DISPLAY_TOC, 0)
+	Case 1026
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/TranslationWrite.htm", HH_DISPLAY_TOC, 0)
+	Case 1027
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/UserInterface.htm", HH_DISPLAY_TOC, 0)
+	Case 1028
+		OpenCHM = HtmlHelp(hwnd, chmFile & "::/HelpSys-Settings.htm", HH_DISPLAY_TOC, 0)
+	End Select
 End Function
